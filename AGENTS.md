@@ -112,6 +112,12 @@ config, commit messages, PR titles and bodies.
   statement PDF is never committed.
 - Polish ships with each slice: tests, ADR, clean comments, and the README/OpenAPI
   section land in the same PR as the feature. There is no end-of-project cleanup phase.
+- **Private notes live in `local/`, never in the tree.** Backlog, planning, design and
+  reasoning notes, scratch: all of it goes under `local/`, which is the git-ignored
+  symlink to the private notes repo, versioned and backed up there. Adding a new
+  ignore rule to keep a notes file in the tree is the wrong fix twice over: the file
+  stops being backed up, and one `git add -f` or one relaxed ignore rule publishes it.
+  `local/` is the only private surface, and it needs no new entry to hold one more file.
 
 ## Docs deliverables
 
