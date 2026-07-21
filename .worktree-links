@@ -20,7 +20,6 @@ local
 .gemini
 .agents
 
-# Private design/learning notes and the local task database.
-design-notes.md
+# The local task database.
 .beads
 .bv
