@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.spring)
+    alias(libs.plugins.kotlin.jpa)
     alias(libs.plugins.spring.boot)
     alias(libs.plugins.spring.dependency.management)
     alias(libs.plugins.ktlint)
@@ -10,7 +11,7 @@ plugins {
 
 group = "com.transactionauthorizer"
 version = "0.0.1-SNAPSHOT"
-description = "API de autorizacao de transacoes financeiras"
+description = "Transaction authorization API for a bank account balance"
 
 java {
     toolchain {
@@ -25,11 +26,25 @@ repositories {
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
+    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("tools.jackson.module:jackson-module-kotlin")
+    // Boot 4 split autoconfiguration per technology: `flyway-core` alone is on the
+    // classpath but never wired, so the starter is what actually runs the migrations.
+    implementation("org.springframework.boot:spring-boot-starter-flyway")
+    runtimeOnly("org.flywaydb:flyway-database-postgresql")
+    runtimeOnly("org.postgresql:postgresql")
     testImplementation("org.springframework.boot:spring-boot-starter-actuator-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")
+    testImplementation("org.springframework.boot:spring-boot-testcontainers")
+    // Testcontainers 2.x renamed every module to the `testcontainers-` prefix; the 1.x
+    // coordinates (`org.testcontainers:postgresql`) no longer exist in the BOM.
+    testImplementation("org.testcontainers:testcontainers-junit-jupiter")
+    testImplementation("org.testcontainers:testcontainers-postgresql")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
+    testImplementation(libs.archunit.junit5)
+    testImplementation(libs.mockk)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
@@ -39,10 +54,10 @@ kotlin {
     }
 }
 
-// detekt 1.23.x é compilado com Kotlin 2.0.21 e recusa rodar sob o Kotlin do projeto;
-// fixar o classpath de runtime do detekt na versão esperada é o workaround documentado
-// (https://detekt.dev/docs/gettingstarted/gradle#dependencies). Remover quando o
-// detekt passar a suportar o Kotlin do projeto.
+// detekt 1.23.x is built against Kotlin 2.0.21 and refuses to run under the project's
+// Kotlin; pinning detekt's own runtime classpath to the expected version is the
+// workaround detekt documents (https://detekt.dev/docs/gettingstarted/gradle#dependencies).
+// Drop it once detekt supports the project's Kotlin.
 configurations.matching { it.name == "detekt" }.all {
     resolutionStrategy.eachDependency {
         if (requested.group == "org.jetbrains.kotlin") {
@@ -55,8 +70,8 @@ kover {
     reports {
         filters {
             includes {
-                // O gate de cobertura vale onde mora a lógica; adapters e wiring ficam
-                // de fora para não induzir teste de getter.
+                // The coverage gate applies where the logic lives; adapters and wiring
+                // stay out so it does not push anyone into testing getters.
                 classes("com.transactionauthorizer.domain.*", "com.transactionauthorizer.application.*")
             }
         }
