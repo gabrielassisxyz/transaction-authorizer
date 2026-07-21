@@ -39,6 +39,18 @@ violations="$(printf '%s\n' "$body" | grep -n -i -E \
     -e '🤖' \
     || true)"
 
+# The prose gate, where the repo opted into one. A commit message is the one published
+# text no later check can reach: bin/ci sees the tree and the PR job sees the PR, but
+# nothing reads the message again, and rewriting it after a push costs a force-push.
+#
+# The opt-in signal is bin/ci calling the guard, not the script merely being present:
+# llm-workflow carries the canonical source without running it on itself, and keying off
+# the file would block every commit in the one repo whose prose uses em-dashes by
+# design. Repos that never opted in reach neither branch.
+if [ -x bin/slop-guard ] && grep -q 'slop-guard' bin/ci 2>/dev/null; then
+    printf '%s\n' "$body" | bin/slop-guard --stdin "commit message" >/dev/null || exit 1
+fi
+
 [ -z "$violations" ] && exit 0
 
 cat >&2 <<EOF
