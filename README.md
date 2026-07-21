@@ -29,5 +29,5 @@ bin/ci   # formato, lint, testes e cobertura — o mesmo gate do CI
 
 ## Documentação
 
-- `ROADMAP.md` — direção do projeto.
-- `docs/adr/` — decisões de arquitetura com motivadores e trade-offs.
+- `ROADMAP.md`: direção do projeto.
+- `docs/adr/`: decisões de arquitetura com motivadores e trade-offs.

@@ -3,23 +3,39 @@ name: ci
 on:
   push:
     branches: [main]
+  # `edited` is here for the prose gate: a PR body is rewritten far more often than it
+  # is pushed to, and without it the gate keeps reporting the text it saw at push time.
   pull_request:
+    types: [opened, synchronize, reopened, edited]
 
 jobs:
   ci:
+    # Editing a PR body cannot change the tree, so the build does not re-run for it.
+    if: github.event_name != 'pull_request' || github.event.action != 'edited'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          # Histórico completo: o gitleaks do bin/ci escaneia todos os commits.
+          # Full history: the gitleaks run inside bin/ci scans every commit.
           fetch-depth: 0
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
-      - name: Instala gitleaks
+      - name: Install gitleaks
         run: |
           curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz \
             | tar -xz -C /usr/local/bin gitleaks
       - run: bin/ci
+
+  slop-guard-pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: PR text carries no prose tell
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s\n%s\n' "$TITLE" "$BODY" | bin/slop-guard --stdin "PR text"

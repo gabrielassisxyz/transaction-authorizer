@@ -7,7 +7,10 @@ cd "$(dirname "$0")/.."
 if command -v gitleaks >/dev/null 2>&1; then
     gitleaks detect --source . --no-banner
 else
-    echo "aviso: gitleaks não instalado — o scan de segredos rodou apenas no CI" >&2
+    echo "warning: gitleaks is not installed; the secret scan ran only in CI" >&2
 fi
 
 ./gradlew --console=plain ktlintCheck detekt test koverVerify
+
+# Last, so a prose hit still lets the compiler and the tests report first.
+bin/slop-guard

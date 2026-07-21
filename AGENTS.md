@@ -10,19 +10,19 @@ past it, STOP and flag it.
 
 ## Commands
 
-- `bin/ci` — format check, lint, tests, coverage gate. The exact thing CI runs; green
+- `bin/ci`: format check, lint, tests, coverage gate. The exact thing CI runs; green
   locally means green in CI. Run before every push.
-- `bin/install-hooks` — once after clone; installs the gitleaks pre-commit and
+- `bin/install-hooks`: once after clone; installs the gitleaks pre-commit and
   commit-msg gates.
-- `bin/worktree new <task>` — per-session worktree; never work in the main tree.
-- `docker compose up -d` — localstack SQS (queue seeded with 100k accounts by the
+- `bin/worktree new <task>`: per-session worktree; never work in the main tree.
+- `docker compose up -d`: localstack SQS (queue seeded with 100k accounts by the
   `message-generator` service) + Postgres.
-- `./gradlew bootRun` — run the app against the compose services.
+- `./gradlew bootRun`: run the app against the compose services.
 
-## Stack (decided — do not re-litigate)
+## Stack (decided, do not re-litigate)
 
 - Kotlin on Java 21, Spring Boot with **Spring MVC + virtual threads**
-  (`spring.threads.virtual.enabled=true`). NOT WebFlux, NOT coroutines — one
+  (`spring.threads.virtual.enabled=true`). NOT WebFlux, NOT coroutines: one
   concurrency model only. Rationale in `docs/adr/`.
 - Persistence: JPA + PostgreSQL. Money is **integer cents** (BRL), never binary float.
 - JPA entities are regular `class`es, **never `data class`** (Hibernate identity vs
@@ -36,8 +36,8 @@ past it, STOP and flag it.
 - Hexagonal, single Gradle module, enforced by package structure + an ArchUnit test:
   `domain` (pure, no Spring imports) ← `application` ← `adapter/in/web`,
   `adapter/in/sqs`, `adapter/out/persistence`.
-- The core invariant — two concurrent debits must never drive a balance negative — is
-  guarded by an atomic conditional update in the persistence adapter. Any change to
+- The core invariant, that two concurrent debits must never drive a balance negative,
+  is guarded by an atomic conditional update in the persistence adapter. Any change to
   balance logic, idempotency, or the SQS consumer is a High/Critical-tier diff (see
   Review).
 
@@ -56,7 +56,7 @@ past it, STOP and flag it.
 
 ## Language policy (project override)
 
-- Deliverable content — README, docs, ADRs, code comments, commit and PR text — is
+- Deliverable content (README, docs, ADRs, code comments, commit and PR text) is
   written in **pt-BR**. This intentionally overrides any global English-only rule.
 - Code identifiers (packages, classes, functions, variables) and this file stay in
   **English**.
@@ -69,12 +69,30 @@ past it, STOP and flag it.
 - Architecture rationale goes to `docs/adr/` (public, numbered, written in the same PR
   as the change), not inline.
 
+## Prose
+
+Applies to everything a reader outside this repo can see: Markdown, source comments,
+config, commit messages, PR titles and bodies.
+
+- No em-dash. A comma, a colon, a semicolon or a full stop says the same thing. This one
+  is checked by `bin/ci` and by the `commit-msg` hook, so it fails before it ships; the
+  rest of this list is judgment.
+- Bold marks structure (a bullet lead-in, a table header), never emphasis in the middle
+  of a sentence. Same for italics: introducing a term, not stressing a word.
+- No process narration. No task ids, no phase or slice names, no review rounds, no
+  mention of who or what reviewed a diff, no reference to a session or a conversation. A
+  commit says what was wrong and what changed, never how the work was organised.
+- No audience in the text. The README says what the software does, not who is going to
+  read it.
+- No redundant parenthetical. If it matters, it is a sentence; if it is a reference, it
+  is a link; otherwise it is deleted.
+
 ## Review model (by risk tier of the diff)
 
 - **Low** (DTOs, wiring, config, docs, diagrams): CI + self-read only.
 - **High** (balance, credit/debit rule, idempotency, concurrency, SQS consumer,
-  persistence writes): one independent model review — the implementer never reviews
-  its own diff — plus the corner-case tests.
+  persistence writes): one independent review, never by whoever wrote the diff, plus
+  the corner-case tests.
 - **Critical** (atomic balance update, exactly-once account creation, concurrency
   control): two independent models, findings synthesized once; no review loops.
 - Review is a documented judgment call per slice, not a blocking hook; the blocking
@@ -83,10 +101,10 @@ past it, STOP and flag it.
 ## Git & publication
 
 - Branches: Conventional Branch. Commits: Conventional Commits, pt-BR descriptions,
-  atomic. PRs: what + why, about the software and the problem — never the audience,
+  atomic. PRs: what + why, about the software and the problem, never the audience,
   never a session or conversation.
 - The repo is public. No AI attribution anywhere (the commit-msg hook enforces this).
-  No personal names in content. No secrets — `.example` files only. The challenge
+  No personal names in content. No secrets, `.example` files only. The challenge
   statement PDF is never committed.
 - Polish ships with each slice: tests, ADR, clean comments, and the README/OpenAPI
   section land in the same PR as the feature. There is no end-of-project cleanup phase.
