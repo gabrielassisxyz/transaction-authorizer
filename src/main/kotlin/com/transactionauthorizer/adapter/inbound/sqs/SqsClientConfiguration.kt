@@ -25,9 +25,7 @@ class SqsClientConfiguration {
             }.build()
 
     // Static keys are tied to the endpoint override because that is what they mean: an
-    // emulator that demands credentials and ignores their value. Keying them off
-    // blankness instead would let the local default (`test`/`test`) travel into a real
-    // deployment, where the symptom is a consumer that stays up and consumes nothing.
+    // emulator demanding credentials it ignores. The local default would otherwise leak.
     private fun credentialsProvider(properties: SqsProperties): AwsCredentialsProvider {
         val accessKey = properties.accessKey
         val secretKey = properties.secretKey

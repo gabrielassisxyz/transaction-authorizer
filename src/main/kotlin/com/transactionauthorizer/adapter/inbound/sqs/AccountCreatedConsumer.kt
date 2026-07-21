@@ -49,9 +49,8 @@ class AccountCreatedConsumer(
         if (!running.compareAndSet(true, false)) {
             return
         }
-        // A poller can be parked in a long poll for up to `waitTime`, so the timeout
-        // has to outlast it; cutting it short would abandon messages already received
-        // but not yet committed, which is exactly how a deploy manufactures duplicates.
+        // A poller sits in a long poll for up to `waitTime`, so the timeout has to
+        // outlast it: cutting it short abandons received-but-uncommitted messages.
         val drained = stopped.await(properties.shutdownTimeout.toMillis(), TimeUnit.MILLISECONDS)
         if (!drained) {
             log.warn("sqs pollers did not finish within {}", properties.shutdownTimeout)
@@ -72,10 +71,8 @@ class AccountCreatedConsumer(
         }
     }
 
-    // Throwable, not Exception: this is the last line of defence for the poller, and the
-    // executor never replaces a thread that ended. A `NoClassDefFoundError` from a lazily
-    // loaded SDK class would otherwise retire this poller for the life of the process,
-    // with `isRunning` still answering true.
+    // Throwable, not Exception: the executor never replaces a thread that ended, so one
+    // `NoClassDefFoundError` would retire this poller while `isRunning` still says true.
     @Suppress("TooGenericExceptionCaught")
     private fun pollOnce() {
         try {
@@ -106,9 +103,8 @@ class AccountCreatedConsumer(
             delete(message)
             meterRegistry.counter("sqs.messages", "outcome", "processed").increment()
         } catch (e: MalformedAccountEventException) {
-            // Poison messages are deliberately not deleted: the redrive policy is the
-            // retry budget, and deleting here would destroy the evidence instead of
-            // moving it to the dead-letter queue.
+            // Not deleted on purpose: the redrive policy is the retry budget, so the
+            // message has to reach the dead-letter queue instead of dying here.
             meterRegistry.counter("sqs.messages", "outcome", "poison").increment()
             log.warn(
                 "discarding unparseable message {} to redrive after {} receives: {}",
@@ -123,8 +119,6 @@ class AccountCreatedConsumer(
         }
     }
 
-    // Deleting per message, right after its own database work commits, is what keeps a
-    // failure on one message from un-acking the ones already done in the same batch.
     private fun delete(message: Message) {
         sqsClient.deleteMessage(
             DeleteMessageRequest
@@ -135,9 +129,8 @@ class AccountCreatedConsumer(
         )
     }
 
-    // Restoring the interrupt flag stops this poller through its own loop condition. It
-    // must not clear `running`: that flag is shared, so one interrupted thread would
-    // stop every other poller with it.
+    // Must not clear `running`, which is shared: restoring the interrupt flag stops
+    // this poller alone, through its own loop condition.
     private fun sleepBeforeRetry() {
         try {
             Thread.sleep(properties.retryDelay.toMillis())

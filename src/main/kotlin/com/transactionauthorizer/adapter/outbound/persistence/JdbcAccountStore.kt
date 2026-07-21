@@ -45,10 +45,8 @@ class JdbcAccountStore(
                     )
                 }.single()
 
-        // Truncated on both sides, and truncated on the way in too. TIMESTAMPTZ holds
-        // microseconds and Postgres *rounds* a finer value, so comparing against the
-        // untruncated instant would report a conflict on every redelivery of an
-        // identical event whose timestamp carried nanoseconds.
+        // TIMESTAMPTZ holds microseconds and Postgres *rounds* anything finer, so a
+        // nanosecond instant would read as divergent from itself on every redelivery.
         val matches =
             stored.ownerId == account.ownerId &&
                 stored.status == account.status &&
@@ -68,8 +66,7 @@ class JdbcAccountStore(
 
     private companion object {
         // ON CONFLICT DO NOTHING is what makes at-least-once delivery harmless: the
-        // duplicate loses on the primary key instead of raising, so no transaction is
-        // wasted on rolling back work that was never valid.
+        // duplicate loses on the primary key instead of raising.
         const val INSERT_IF_ABSENT = """
             INSERT INTO accounts (id, owner_id, status, created_at, balance_cents)
             VALUES (:id, :ownerId, :status, :createdAt, :balanceCents)

@@ -40,9 +40,8 @@ class AccountCreatedEventParser(
             } catch (e: tools.jackson.core.JacksonException) {
                 throw MalformedAccountEventException("body is not valid JSON", e)
             }
-        // A body of `null` or `[]` parses fine and is still not an event. Without this
-        // check the failure would surface as a NullPointerException further down and be
-        // classified as a transient fault instead of poison.
+        // A body of `null` or `[]` parses fine and is still not an event; without this
+        // check it surfaces as an NPE and gets classified as transient instead of poison.
         val account = root?.get("account")
         if (account == null || !account.isObject) {
             throw MalformedAccountEventException("body has no `account` object")
@@ -68,9 +67,8 @@ class AccountCreatedEventParser(
             throw MalformedAccountEventException("field `status` is not a known account status", e)
         }
 
-    // The producer sends epoch seconds as a JSON string while the written contract
-    // describes ISO-8601. Accepting both, plus the bare JSON number a third producer
-    // would send, is cheaper than betting on which one arrives.
+    // The producer sends epoch seconds as a JSON string while the written contract says
+    // ISO-8601, so all three shapes are accepted rather than betting on one.
     private fun JsonNode.createdAt(): Instant {
         val node =
             get("created_at")
@@ -85,12 +83,9 @@ class AccountCreatedEventParser(
         return parsed.also(::rejectFutureInstant)
     }
 
-    // An account-opening event describes something that already happened, so a creation
-    // instant in the future is not a plausible reading of any of the three accepted
-    // formats: it is epoch milliseconds arriving where epoch seconds were promised, and
-    // a thousandfold error would otherwise be stored as a date in the year 57488 without
-    // a word. The tolerance is there because two machines never agree on the second, and
-    // a rejection under normal clock drift would dead-letter valid events.
+    // A future creation instant means epoch milliseconds arrived where seconds were
+    // promised, which would otherwise store silently as the year 57488. The tolerance
+    // keeps ordinary clock drift from dead-lettering valid events.
     private fun rejectFutureInstant(instant: Instant) {
         val horizon = clock.instant().plus(CLOCK_SKEW_TOLERANCE)
         if (instant.isAfter(horizon)) {

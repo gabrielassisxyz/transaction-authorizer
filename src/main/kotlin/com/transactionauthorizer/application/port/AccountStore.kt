@@ -14,10 +14,8 @@ sealed class AccountCreationOutcome {
 
     data object AlreadyExists : AccountCreationOutcome()
 
-    // Same account id, different owner, status or creation instant: the first write
-    // wins, but the divergence is evidence of an upstream defect and must not be
-    // swallowed. All three stored fields travel with it, because the one that diverged
-    // is exactly the one the operator needs to see.
+    // The first write wins, but a same-id-different-payload event is evidence of an
+    // upstream defect, so all three stored fields travel out instead of being swallowed.
     data class Diverged(
         val storedOwnerId: UUID,
         val storedStatus: AccountStatus,
