@@ -19,9 +19,6 @@
 .gemini
 .agents
 
-# Design/learning notes kept out of the published tree.
-design-notes.md
-
 # Issue tracker state (local task database; not part of the deliverable).
 .beads
 .bv
