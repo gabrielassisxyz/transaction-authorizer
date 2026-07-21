@@ -34,8 +34,9 @@ past it, STOP and flag it.
 ## Architecture
 
 - Hexagonal, single Gradle module, enforced by package structure + an ArchUnit test:
-  `domain` (pure, no Spring imports) ← `application` ← `adapter/in/web`,
-  `adapter/in/sqs`, `adapter/out/persistence`.
+  `domain` (pure, no Spring imports) ← `application` ← `adapter/inbound/web`,
+  `adapter/inbound/sqs`, `adapter/outbound/persistence` (`in`/`out` are Kotlin
+  keywords, so they would need backticks in every package clause and import).
 - The core invariant, that two concurrent debits must never drive a balance negative,
   is guarded by an atomic conditional update in the persistence adapter. Any change to
   balance logic, idempotency, or the SQS consumer is a High/Critical-tier diff (see
@@ -56,18 +57,21 @@ past it, STOP and flag it.
 
 ## Language policy (project override)
 
-- Deliverable content (README, docs, ADRs, code comments, commit and PR text) is
-  written in **pt-BR**. This intentionally overrides any global English-only rule.
-- Code identifiers (packages, classes, functions, variables) and this file stay in
-  **English**.
+- Published prose (README, `docs/`, ADRs, commit and PR text) is written in
+  **pt-BR**. This intentionally overrides any global English-only rule.
+- Everything inside a source file is **English**: identifiers, comments, log and
+  exception messages, test names. Same for build scripts, SQL migrations and config.
 
 ## Comments
 
 - Density is LOW: only genuinely non-obvious logic. WHY, not WHAT. Never process
   narration (task ids, review findings, phase names), never ALL-CAPS labels
-  ("WHY:", "NOTA:"), never didactic explanations of language basics.
-- Architecture rationale goes to `docs/adr/` (public, numbered, written in the same PR
-  as the change), not inline.
+  ("WHY:", "NOTE:"), never didactic explanations of language basics.
+- No file-header or class-level essays. If a type needs a paragraph to be understood,
+  the paragraph is not a comment: architecture rationale goes to `docs/adr/` (public,
+  numbered, written in the same PR as the change), and the longer "why this bit looks
+  like this" goes to `design-notes.md` (private, gitignored), anchored by
+  file + symbol (`AuthorizeTransactionService.authorize`), never by line.
 
 ## Prose
 
