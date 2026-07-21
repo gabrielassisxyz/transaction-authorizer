@@ -6,7 +6,9 @@ invariante de que um débito nunca deixa o saldo negativo.
 
 ## Execução local
 
-Pré-requisitos: Docker e JDK 21.
+Pré-requisitos: Docker e JDK 21. A versão 21 é o LTS alinhado ao que roda em
+produção hoje, não uma versão presa por inércia: os recursos de que o serviço
+depende (virtual threads, entre outros) já são estáveis nela.
 
 ```bash
 # 1. Sobe localstack (fila SQS semeada com 100k contas) e Postgres
