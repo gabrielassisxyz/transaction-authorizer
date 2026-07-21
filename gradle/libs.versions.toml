@@ -7,6 +7,7 @@ detekt = "1.23.8"
 kover = "0.9.2"
 archunit = "1.4.1"
 mockk = "1.14.2"
+aws-sdk = "2.46.7"
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
@@ -19,5 +20,7 @@ detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
 
 [libraries]
+aws-bom = { module = "software.amazon.awssdk:bom", version.ref = "aws-sdk" }
+aws-sqs = { module = "software.amazon.awssdk:sqs" }
 archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit" }
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
