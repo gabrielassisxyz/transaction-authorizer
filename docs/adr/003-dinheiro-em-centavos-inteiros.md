@@ -22,6 +22,44 @@ A moeda é **BRL apenas**. `Money` não carrega um campo de moeda: a constante
 `Money.CURRENCY` documenta a unidade, a coluna `currency` guarda o valor com um
 `CHECK (currency = 'BRL')`, e a borda HTTP recusa qualquer outra moeda.
 
+## Por que duas casas decimais, e não mais
+
+Duas casas não é uma simplificação do desafio: é a **unidade mínima do BRL**, e este
+serviço é uma **fronteira de lançamento**, não um motor de cálculo.
+
+Valores com precisão sub-centavo existem de verdade num banco: a taxa de câmbio tem
+seis ou mais casas, o rendimento diário de um CDB acumula fração de centavo. Mas eles
+vivem em quem *calcula*, não em quem *lança*. O motor de câmbio multiplica pela taxa
+cheia e pede a autorização do débito já arredondado ao centavo; o rendimento acumula
+num livro de provisionamento e só toca a conta corrente como um crédito inteiro. É por
+isso que o campo de valor do ISO 8583 é um inteiro em unidades monetárias mínimas e que
+o Pix restringe o valor a duas casas em BRL: na hora do lançamento, o número já está
+arredondado por quem tinha contexto para arredondá-lo.
+
+Daí a recusa, em vez do arredondamento:
+
+- **Não há resultado representável.** O saldo é `BIGINT` em centavos. Debitar meio
+  centavo não tem resposta certa, e qualquer valor postado seria inventado aqui.
+- **Arredondar aqui esconde o arredondamento.** O arredondamento de dinheiro acontece
+  uma vez, em um lugar capaz de registrar a diferença; sistemas que legitimamente
+  arredondam têm uma conta de arredondamento para receber o resto. Um autorizador não
+  tem. Se ele recebesse `54.321` e postasse `54,32`, o décimo de centavo sumiria sem
+  lançamento e os dois sistemas passariam a discordar sobre o que aconteceu: uma
+  quebra de conciliação sem origem rastreável.
+- **Sub-centavo chegando aqui é defeito de quem chamou.** Recusar devolve o erro a
+  quem tem contexto para corrigi-lo; aceitar o absorve em silêncio.
+
+Aceitar sub-centavo de verdade não seria alargar a escala: exigiria política de
+arredondamento no contrato (quem arredonda, em que direção), resposta devolvendo valor
+pedido e valor postado separadamente, e uma conta de arredondamento recebendo o resto.
+É um desenho inteiro, não um parâmetro, e nenhuma das três peças tem requisito aqui.
+
+O que a constante `SCALE = 2` de fato esconde é **outra** generalização: a unidade
+mínima é uma propriedade da moeda, não do sistema (JPY tem zero casas, KWD tem três).
+Um autorizador multimoeda troca a constante por uma escala derivada da moeda. É o
+mesmo movimento descrito abaixo para o campo de moeda, e continua fora de escopo pelo
+mesmo motivo.
+
 ## Consequências
 
 - Aritmética de saldo é aritmética de inteiros: exata, comparável com `==`, e
@@ -30,9 +68,10 @@ A moeda é **BRL apenas**. `Money` não carrega um campo de moeda: a constante
 - O limite superior passa a ser o de `BIGINT` (cerca de 92 quatrilhões de centavos).
   Não é um limite teórico: um crédito que estoure esse teto é recusado explicitamente,
   em vez de virar saldo negativo por *overflow* silencioso.
-- Valor com mais de duas casas decimais na entrada é **recusado**, não arredondado.
-  Arredondar dinheiro em silêncio absorve um erro de contrato do chamador dentro do
-  livro-razão.
+- Valor com mais de duas casas decimais **significativas** na entrada é **recusado**,
+  não arredondado. Arredondar dinheiro em silêncio absorve um erro de contrato do
+  chamador dentro do livro-razão. Zeros à direita não contam: `10.5000` é o mesmo
+  dinheiro que `10.50` e é aceito, porque escala de serialização não é precisão.
 - Multimoeda fica fora de escopo. Adicioná-la depois significa acrescentar o campo de
   moeda a `Money` e às queries: mudança real, mas contida, e sem custo nenhum
   enquanto o serviço opera em uma moeda só.

@@ -27,13 +27,17 @@ value class Money(
         val ZERO: Money = Money(0)
         val MAX: Money = Money(Long.MAX_VALUE)
 
-        // Extra scale is rejected rather than rounded: rounding money silently would
-        // absorb a caller's contract error into the ledger.
+        // Extra *significant* scale is rejected rather than rounded: rounding money
+        // silently would absorb a caller's contract error into the ledger. Trailing
+        // zeros carry no precision (they are how a caller serializes a fixed-scale
+        // decimal), so they are normalized away before the check, or `10.5000` would
+        // be refused while the identical `10.50` is accepted.
         fun ofDecimal(value: BigDecimal): Money {
-            require(value.scale() <= SCALE) {
+            val significant = value.stripTrailingZeros()
+            require(significant.scale() <= SCALE) {
                 "value has more than $SCALE decimal places: ${value.toPlainString()}"
             }
-            return Money(value.movePointRight(SCALE).longValueExact())
+            return Money(significant.movePointRight(SCALE).longValueExact())
         }
     }
 }
