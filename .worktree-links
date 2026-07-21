@@ -1,0 +1,26 @@
+# Git-ignored paths symlinked from the main tree into every new worktree.
+#
+# `git worktree add` materializes only TRACKED files, so a fresh worktree starts
+# without any of these — silently. Anything CREATED at one of these paths inside a
+# worktree also dies with it on `git worktree remove` (ignored paths are excluded from
+# git's dirty check). A symlink prevents both: the worktree shares the main tree's
+# copy, and removing the worktree removes only the link.
+#
+# One path per line. `#` comments and blank lines are ignored. A path that does not
+# exist in the main tree is skipped, so listing an optional one costs nothing.
+
+local
+.env
+.ai-jail
+
+# Per-harness agent config (skills, settings) — git-ignored, needed by every session.
+.claude
+.codex
+.opencode
+.gemini
+.agents
+
+# Private design/learning notes and the local task database.
+design-notes.md
+.beads
+.bv

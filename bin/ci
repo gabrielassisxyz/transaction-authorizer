@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# The single deterministic gate: format, lint, tests, coverage. CI runs exactly this
+# script, so a green local run means a green pipeline.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+if command -v gitleaks >/dev/null 2>&1; then
+    gitleaks detect --source . --no-banner
+else
+    echo "aviso: gitleaks não instalado — o scan de segredos rodou apenas no CI" >&2
+fi
+
+./gradlew --console=plain ktlintCheck detekt test koverVerify
