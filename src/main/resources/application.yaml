@@ -1,0 +1,8 @@
+spring:
+  application:
+    name: transaction-authorizer
+  # Virtual threads (Loom): escala de nível reativo mantendo código imperativo.
+  # Motivadores e trade-offs no ADR de concorrência.
+  threads:
+    virtual:
+      enabled: true
