@@ -6,6 +6,8 @@ import com.transactionauthorizer.domain.Money
 import org.springframework.stereotype.Component
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.ObjectMapper
+import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -18,6 +20,7 @@ class MalformedAccountEventException(
 @Component
 class AccountCreatedEventParser(
     private val objectMapper: ObjectMapper,
+    private val clock: Clock,
 ) {
     fun parse(body: String): Account {
         val account = readAccountNode(body)
@@ -72,11 +75,29 @@ class AccountCreatedEventParser(
         val node =
             get("created_at")
                 ?: throw MalformedAccountEventException("field `created_at` is missing")
-        if (node.isIntegralNumber) {
-            return ofEpochSeconds(node.longValue())
+        val parsed =
+            if (node.isIntegralNumber) {
+                ofEpochSeconds(node.longValue())
+            } else {
+                val raw = text("created_at")
+                raw.toLongOrNull()?.let(::ofEpochSeconds) ?: parseAsTimestamp(raw)
+            }
+        return parsed.also(::rejectFutureInstant)
+    }
+
+    // An account-opening event describes something that already happened, so a creation
+    // instant in the future is not a plausible reading of any of the three accepted
+    // formats: it is epoch milliseconds arriving where epoch seconds were promised, and
+    // a thousandfold error would otherwise be stored as a date in the year 57488 without
+    // a word. The tolerance is there because two machines never agree on the second, and
+    // a rejection under normal clock drift would dead-letter valid events.
+    private fun rejectFutureInstant(instant: Instant) {
+        val horizon = clock.instant().plus(CLOCK_SKEW_TOLERANCE)
+        if (instant.isAfter(horizon)) {
+            throw MalformedAccountEventException(
+                "field `created_at` is in the future ($instant); epoch milliseconds where seconds are expected?",
+            )
         }
-        val raw = text("created_at")
-        return raw.toLongOrNull()?.let(::ofEpochSeconds) ?: parseAsTimestamp(raw)
     }
 
     private fun parseAsTimestamp(raw: String): Instant =
@@ -103,4 +124,8 @@ class AccountCreatedEventParser(
             e.addSuppressed(offsetFailure)
             throw MalformedAccountEventException("field `created_at` is neither epoch seconds nor ISO-8601", e)
         }
+
+    private companion object {
+        val CLOCK_SKEW_TOLERANCE: Duration = Duration.ofMinutes(5)
+    }
 }

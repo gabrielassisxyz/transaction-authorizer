@@ -8,11 +8,14 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import tools.jackson.databind.json.JsonMapper
+import java.time.Clock
 import java.time.Instant
+import java.time.ZoneOffset
 import java.util.UUID
 
 class AccountCreatedEventParserTest {
-    private val parser = AccountCreatedEventParser(JsonMapper.builder().build())
+    private val now = Instant.parse("2026-07-21T12:00:00Z")
+    private val parser = AccountCreatedEventParser(JsonMapper.builder().build(), Clock.fixed(now, ZoneOffset.UTC))
 
     private val accountId = UUID.randomUUID()
     private val ownerId = UUID.randomUUID()
@@ -62,6 +65,21 @@ class AccountCreatedEventParserTest {
         assertThatThrownBy { parser.parse(body) }
             .isInstanceOf(MalformedAccountEventException::class.java)
             .hasMessageContaining("`account`")
+    }
+
+    @Test
+    fun `rejects epoch milliseconds sent where epoch seconds are expected`() {
+        assertThatThrownBy { parser.parse(event(createdAt = "1751000000000")) }
+            .isInstanceOf(MalformedAccountEventException::class.java)
+            .hasMessageContaining("future")
+    }
+
+    @Test
+    fun `accepts a timestamp slightly ahead, which is clock skew and not a bad unit`() {
+        val slightlyAhead = now.plusSeconds(60)
+
+        assertThat(parser.parse(event(createdAt = slightlyAhead.toString())).createdAt)
+            .isEqualTo(slightlyAhead)
     }
 
     @Test

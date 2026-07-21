@@ -49,6 +49,22 @@ zerado**, então precisa absorver uma indisponibilidade curta de banco sem manda
 mensagem válida para a DLQ. Três seria agressivo demais para isso; um número alto
 demais faria mensagem envenenada consumir recebimentos por muito tempo.
 
+### Faixa plausível de `created_at`
+
+O parser aceita três formas para o campo, e nenhuma delas é distinguível das outras
+pelo tipo: segundos desde a época em string, segundos como número JSON, e ISO-8601.
+Isso deixa um erro mudo em aberto, o de mil vezes: `"1751000000000"` é milissegundos
+onde o contrato promete segundos, e vira uma data no ano 57488 sem nenhum aviso.
+
+Um evento de abertura de conta descreve algo que já aconteceu, então data no futuro
+não é leitura plausível de forma nenhuma. Essa é regra de domínio, não heurística de
+faixa, e é o que permite recusar sem inventar limite que o contrato não dá. A recusa
+classifica a mensagem como veneno e a manda para o orçamento de redrive.
+
+A tolerância de cinco minutos existe porque duas máquinas nunca concordam no segundo.
+Sem ela, desvio normal de relógio mandaria evento válido para a dead-letter queue, que
+é exatamente o tipo de recusa que faz alguém desligar a validação.
+
 ### Duplicata exata e duplicata divergente
 
 A criação é idempotente por `INSERT ... ON CONFLICT (id) DO NOTHING`. Quando o conflito
