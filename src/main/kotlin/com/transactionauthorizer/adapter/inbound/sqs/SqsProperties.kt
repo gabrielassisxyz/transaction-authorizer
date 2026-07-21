@@ -5,9 +5,10 @@ import java.time.Duration
 
 // The long-poll wait is the SQS maximum: fewer empty receives, fewer API calls, and a
 // message in flight is still picked up immediately. The shutdown timeout has to outlast
-// it, or a stopping poller is abandoned mid-batch.
+// it, or a stopping poller is abandoned mid-batch, and stay under Spring's own
+// per-phase shutdown timeout of 30s, or Spring cuts the drain short instead.
 private const val LONG_POLL_SECONDS = 20L
-private const val SHUTDOWN_TIMEOUT_SECONDS = 30L
+private const val SHUTDOWN_TIMEOUT_SECONDS = 25L
 
 @ConfigurationProperties(prefix = "sqs")
 data class SqsProperties(

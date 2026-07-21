@@ -7,6 +7,8 @@ import com.transactionauthorizer.domain.AccountStatus
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
 import java.sql.Timestamp
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 @Repository
@@ -20,7 +22,7 @@ class JdbcAccountStore(
                 .param("id", account.id)
                 .param("ownerId", account.ownerId)
                 .param("status", account.status.name)
-                .param("createdAt", Timestamp.from(account.createdAt))
+                .param("createdAt", Timestamp.from(account.createdAt.truncatedTo(ChronoUnit.MICROS)))
                 .param("balanceCents", account.balance.cents)
                 .update()
 
@@ -33,16 +35,24 @@ class JdbcAccountStore(
     private fun classifyExisting(account: Account): AccountCreationOutcome {
         val stored =
             jdbcClient
-                .sql("SELECT owner_id, status FROM accounts WHERE id = :id")
+                .sql("SELECT owner_id, status, created_at FROM accounts WHERE id = :id")
                 .param("id", account.id)
                 .query { rs, _ ->
                     StoredIdentity(
                         rs.getObject("owner_id", UUID::class.java),
                         AccountStatus.valueOf(rs.getString("status")),
+                        rs.getTimestamp("created_at").toInstant(),
                     )
                 }.single()
 
-        val matches = stored.ownerId == account.ownerId && stored.status == account.status
+        // Truncated on both sides, and truncated on the way in too. TIMESTAMPTZ holds
+        // microseconds and Postgres *rounds* a finer value, so comparing against the
+        // untruncated instant would report a conflict on every redelivery of an
+        // identical event whose timestamp carried nanoseconds.
+        val matches =
+            stored.ownerId == account.ownerId &&
+                stored.status == account.status &&
+                stored.createdAt == account.createdAt.truncatedTo(ChronoUnit.MICROS)
         return if (matches) {
             AccountCreationOutcome.AlreadyExists
         } else {
@@ -53,6 +63,7 @@ class JdbcAccountStore(
     private data class StoredIdentity(
         val ownerId: UUID,
         val status: AccountStatus,
+        val createdAt: Instant,
     )
 
     private companion object {

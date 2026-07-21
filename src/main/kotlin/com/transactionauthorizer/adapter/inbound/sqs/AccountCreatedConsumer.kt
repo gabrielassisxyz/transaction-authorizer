@@ -64,7 +64,7 @@ class AccountCreatedConsumer(
 
     private fun poll() {
         try {
-            while (running.get()) {
+            while (running.get() && !Thread.currentThread().isInterrupted) {
                 pollOnce()
             }
         } finally {
@@ -72,15 +72,17 @@ class AccountCreatedConsumer(
         }
     }
 
-    // The loop is the last line of defence for the consumer: any escaping throwable
-    // would silently retire this poller for the lifetime of the process.
+    // Throwable, not Exception: this is the last line of defence for the poller, and the
+    // executor never replaces a thread that ended. A `NoClassDefFoundError` from a lazily
+    // loaded SDK class would otherwise retire this poller for the life of the process,
+    // with `isRunning` still answering true.
     @Suppress("TooGenericExceptionCaught")
     private fun pollOnce() {
         try {
             receive().forEach(::handle)
-        } catch (e: Exception) {
+        } catch (t: Throwable) {
             meterRegistry.counter("sqs.messages", "outcome", "receive_failed").increment()
-            log.error("failed to receive from queue {}", properties.queueName, e)
+            log.error("failed to receive from queue {}", properties.queueName, t)
             sleepBeforeRetry()
         }
     }
@@ -133,12 +135,14 @@ class AccountCreatedConsumer(
         )
     }
 
+    // Restoring the interrupt flag stops this poller through its own loop condition. It
+    // must not clear `running`: that flag is shared, so one interrupted thread would
+    // stop every other poller with it.
     private fun sleepBeforeRetry() {
         try {
             Thread.sleep(properties.retryDelay.toMillis())
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
-            running.set(false)
         }
     }
 

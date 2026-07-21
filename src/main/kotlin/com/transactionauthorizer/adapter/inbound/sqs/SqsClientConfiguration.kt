@@ -18,16 +18,20 @@ class SqsClientConfiguration {
             .builder()
             .region(Region.of(properties.region))
             .credentialsProvider(credentialsProvider(properties))
-            .apply { properties.endpoint?.let { endpointOverride(URI.create(it)) } }
-            .build()
+            // Blank and absent must behave alike: a real deployment sets SQS_ENDPOINT to
+            // an empty value, and `URI.create("")` has no scheme, so the builder throws.
+            .apply {
+                properties.endpoint?.takeIf { it.isNotBlank() }?.let { endpointOverride(URI.create(it)) }
+            }.build()
 
-    // Static keys exist for localstack, which has no credential chain to consult.
-    // Leaving them unset is what makes a deployed instance fall back to the instance
-    // role instead of silently carrying a hardcoded identity.
+    // Static keys are tied to the endpoint override because that is what they mean: an
+    // emulator that demands credentials and ignores their value. Keying them off
+    // blankness instead would let the local default (`test`/`test`) travel into a real
+    // deployment, where the symptom is a consumer that stays up and consumes nothing.
     private fun credentialsProvider(properties: SqsProperties): AwsCredentialsProvider {
         val accessKey = properties.accessKey
         val secretKey = properties.secretKey
-        if (accessKey.isNullOrBlank() || secretKey.isNullOrBlank()) {
+        if (properties.endpoint.isNullOrBlank() || accessKey.isNullOrBlank() || secretKey.isNullOrBlank()) {
             return DefaultCredentialsProvider.builder().build()
         }
         return StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKey, secretKey))

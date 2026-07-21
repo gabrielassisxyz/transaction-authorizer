@@ -37,8 +37,14 @@ class AccountCreatedEventParser(
             } catch (e: tools.jackson.core.JacksonException) {
                 throw MalformedAccountEventException("body is not valid JSON", e)
             }
-        return root.get("account")
-            ?: throw MalformedAccountEventException("body has no `account` object")
+        // A body of `null` or `[]` parses fine and is still not an event. Without this
+        // check the failure would surface as a NullPointerException further down and be
+        // classified as a transient fault instead of poison.
+        val account = root?.get("account")
+        if (account == null || !account.isObject) {
+            throw MalformedAccountEventException("body has no `account` object")
+        }
+        return account
     }
 
     private fun JsonNode.text(field: String): String =
@@ -60,16 +66,32 @@ class AccountCreatedEventParser(
         }
 
     // The producer sends epoch seconds as a JSON string while the written contract
-    // describes ISO-8601; accepting both is cheaper than betting on which one arrives.
+    // describes ISO-8601. Accepting both, plus the bare JSON number a third producer
+    // would send, is cheaper than betting on which one arrives.
     private fun JsonNode.createdAt(): Instant {
+        val node =
+            get("created_at")
+                ?: throw MalformedAccountEventException("field `created_at` is missing")
+        if (node.isIntegralNumber) {
+            return ofEpochSeconds(node.longValue())
+        }
         val raw = text("created_at")
-        raw.toLongOrNull()?.let { return Instant.ofEpochSecond(it) }
-        return try {
+        return raw.toLongOrNull()?.let(::ofEpochSeconds) ?: parseAsTimestamp(raw)
+    }
+
+    private fun parseAsTimestamp(raw: String): Instant =
+        try {
             OffsetDateTime.parse(raw).toInstant()
         } catch (e: java.time.format.DateTimeParseException) {
             parseAsInstant(raw, e)
         }
-    }
+
+    private fun ofEpochSeconds(seconds: Long): Instant =
+        try {
+            Instant.ofEpochSecond(seconds)
+        } catch (e: java.time.DateTimeException) {
+            throw MalformedAccountEventException("field `created_at` is out of range", e)
+        }
 
     private fun parseAsInstant(
         raw: String,

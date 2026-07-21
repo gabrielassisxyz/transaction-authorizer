@@ -41,17 +41,34 @@ class AccountCreatedEventParserTest {
     }
 
     @Test
+    fun `also reads a timestamp sent as a bare json number`() {
+        val body = """{"account":{"id":"$accountId","owner":"$ownerId","created_at":1751000000,"status":"ENABLED"}}"""
+
+        assertThat(parser.parse(body).createdAt).isEqualTo(Instant.ofEpochSecond(1751000000))
+    }
+
+    @Test
     fun `rejects a body that is not json`() {
         assertThatThrownBy { parser.parse("not json at all") }
             .isInstanceOf(MalformedAccountEventException::class.java)
             .hasMessageContaining("valid JSON")
     }
 
-    @Test
-    fun `rejects a body without the account object`() {
-        assertThatThrownBy { parser.parse("""{"transaction":{}}""") }
+    // These parse into perfectly valid JSON that is still not an event. Left unchecked
+    // they surface as a NullPointerException and get misread as a transient fault.
+    @ParameterizedTest
+    @ValueSource(strings = ["""{"transaction":{}}""", "null", "[]", """{"account":null}""", """{"account":7}"""])
+    fun `rejects a body without the account object`(body: String) {
+        assertThatThrownBy { parser.parse(body) }
             .isInstanceOf(MalformedAccountEventException::class.java)
             .hasMessageContaining("`account`")
+    }
+
+    @Test
+    fun `rejects a timestamp outside the representable range`() {
+        assertThatThrownBy { parser.parse(event(createdAt = "9223372036854775807")) }
+            .isInstanceOf(MalformedAccountEventException::class.java)
+            .hasMessageContaining("`created_at`")
     }
 
     @Test
