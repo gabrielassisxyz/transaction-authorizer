@@ -1,8 +1,21 @@
 spring:
   application:
     name: transaction-authorizer
-  # Virtual threads (Loom): escala de nível reativo mantendo código imperativo.
-  # Motivadores e trade-offs no ADR de concorrência.
+  # Reactive-level scaling while the code stays imperative; trade-offs in ADR-001.
   threads:
     virtual:
       enabled: true
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/transaction_authorizer}
+    username: ${DB_USERNAME:authorizer}
+    password: ${DB_PASSWORD:authorizer}
+    hikari:
+      # Under virtual threads the connection pool, not the thread pool, is the
+      # concurrency limit, so it is sized explicitly instead of inherited.
+      maximum-pool-size: ${DB_POOL_SIZE:20}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true

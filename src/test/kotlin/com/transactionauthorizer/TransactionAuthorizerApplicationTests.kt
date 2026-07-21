@@ -1,18 +1,17 @@
 package com.transactionauthorizer
 
+import com.transactionauthorizer.support.PostgresIntegrationTest
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.ApplicationContext
-import kotlin.test.assertNotNull
 
-@SpringBootTest
-class TransactionAuthorizerApplicationTests {
+class TransactionAuthorizerApplicationTests : PostgresIntegrationTest() {
     @Autowired
     private lateinit var context: ApplicationContext
 
     @Test
-    fun contextLoads() {
-        assertNotNull(context.getBean(TransactionAuthorizerApplication::class.java))
+    fun `application context starts`() {
+        assertThat(context.getBean(TransactionAuthorizerApplication::class.java)).isNotNull()
     }
 }
