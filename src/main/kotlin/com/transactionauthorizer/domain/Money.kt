@@ -27,11 +27,8 @@ value class Money(
         val ZERO: Money = Money(0)
         val MAX: Money = Money(Long.MAX_VALUE)
 
-        // Extra *significant* scale is rejected rather than rounded: rounding money
-        // silently would absorb a caller's contract error into the ledger. Trailing
-        // zeros carry no precision (they are how a caller serializes a fixed-scale
-        // decimal), so they are normalized away before the check, or `10.5000` would
-        // be refused while the identical `10.50` is accepted.
+        // Sub-cent precision is refused, not rounded: rounding here would absorb a
+        // caller's contract error. Trailing zeros are serialization, so they go first.
         fun ofDecimal(value: BigDecimal): Money {
             val significant = value.stripTrailingZeros()
             require(significant.scale() <= SCALE) {
