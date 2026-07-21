@@ -3,10 +3,15 @@ name: ci
 on:
   push:
     branches: [main]
+  # `edited` is here for the prose gate: a PR body is rewritten far more often than it
+  # is pushed to, and without it the gate keeps reporting the text it saw at push time.
   pull_request:
+    types: [opened, synchronize, reopened, edited]
 
 jobs:
   ci:
+    # Editing a PR body cannot change the tree, so the build does not re-run for it.
+    if: github.event_name != 'pull_request' || github.event.action != 'edited'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
