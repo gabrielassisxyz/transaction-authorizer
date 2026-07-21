@@ -45,12 +45,14 @@ class CreateAccountServiceTest {
     @Test
     fun `an event that contradicts the stored account is an anomaly, not a duplicate`() {
         val storedOwner = UUID.randomUUID()
+        val storedCreatedAt = Instant.parse("2020-01-01T00:00:00Z")
         every { accountStore.createIfAbsent(account) } returns
-            AccountCreationOutcome.Diverged(storedOwner, AccountStatus.DISABLED)
+            AccountCreationOutcome.Diverged(storedOwner, AccountStatus.DISABLED, storedCreatedAt)
 
         val outcome = service.create(account)
 
-        assertThat(outcome).isEqualTo(AccountCreationOutcome.Diverged(storedOwner, AccountStatus.DISABLED))
+        assertThat(outcome)
+            .isEqualTo(AccountCreationOutcome.Diverged(storedOwner, AccountStatus.DISABLED, storedCreatedAt))
         assertThat(counter("accounts.conflict")).isEqualTo(1.0)
         assertThat(counter("accounts.duplicate")).isZero()
     }

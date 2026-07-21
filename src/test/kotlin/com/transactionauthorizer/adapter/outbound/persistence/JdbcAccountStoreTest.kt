@@ -60,7 +60,7 @@ class JdbcAccountStoreTest : PostgresIntegrationTest() {
         val outcome = accountStore.createIfAbsent(account.copy(createdAt = account.createdAt.plusSeconds(1)))
 
         assertThat(outcome)
-            .isEqualTo(AccountCreationOutcome.Diverged(account.ownerId, AccountStatus.ENABLED))
+            .isEqualTo(AccountCreationOutcome.Diverged(account.ownerId, AccountStatus.ENABLED, account.createdAt))
     }
 
     @Test
@@ -71,7 +71,7 @@ class JdbcAccountStoreTest : PostgresIntegrationTest() {
         val outcome = accountStore.createIfAbsent(account.copy(ownerId = UUID.randomUUID()))
 
         assertThat(outcome)
-            .isEqualTo(AccountCreationOutcome.Diverged(account.ownerId, AccountStatus.ENABLED))
+            .isEqualTo(AccountCreationOutcome.Diverged(account.ownerId, AccountStatus.ENABLED, account.createdAt))
     }
 
     // Sub-microsecond precision cannot survive a TIMESTAMPTZ column, so an event whose

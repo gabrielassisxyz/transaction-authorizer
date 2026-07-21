@@ -56,7 +56,7 @@ class JdbcAccountStore(
         return if (matches) {
             AccountCreationOutcome.AlreadyExists
         } else {
-            AccountCreationOutcome.Diverged(stored.ownerId, stored.status)
+            AccountCreationOutcome.Diverged(stored.ownerId, stored.status, stored.createdAt)
         }
     }
 

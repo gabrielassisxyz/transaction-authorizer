@@ -26,13 +26,15 @@ class CreateAccountService(
             is AccountCreationOutcome.Diverged -> {
                 meterRegistry.counter("accounts.conflict").increment()
                 log.warn(
-                    "account {} already exists with owner {} and status {}, incoming event carried owner {} " +
-                        "and status {}; keeping the stored account",
+                    "account {} already exists with owner {}, status {} and creation instant {}; incoming " +
+                        "event carried owner {}, status {} and creation instant {}; keeping the stored account",
                     account.id,
                     outcome.storedOwnerId,
                     outcome.storedStatus,
+                    outcome.storedCreatedAt,
                     account.ownerId,
                     account.status,
+                    account.createdAt,
                 )
             }
         }
