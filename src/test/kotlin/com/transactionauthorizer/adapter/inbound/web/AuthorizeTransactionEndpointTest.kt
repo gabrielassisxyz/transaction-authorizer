@@ -1,5 +1,6 @@
 package com.transactionauthorizer.adapter.inbound.web
 
+import com.jayway.jsonpath.JsonPath
 import com.transactionauthorizer.support.PostgresIntegrationTest
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -71,28 +72,60 @@ class AuthorizeTransactionEndpointTest : PostgresIntegrationTest() {
     }
 
     @Test
-    fun `a transaction against an unknown account is not found`() {
-        authorize(UUID.randomUUID(), UUID.randomUUID(), "DEBIT", "1.00").andExpect {
+    fun `a transaction against an unknown account is not found and records nothing`() {
+        val transactionId = UUID.randomUUID()
+
+        authorize(transactionId, UUID.randomUUID(), "DEBIT", "1.00").andExpect {
             status { isNotFound() }
             content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
         }
+
+        // A missing account is a client error, not a decision: nothing is claimed or recorded,
+        // so a later retry once the account exists still authorizes.
+        assertThat(transactionRowsFor(transactionId)).isZero()
     }
 
     @Test
-    fun `a replayed transaction id returns the first decision and moves the balance once`() {
+    fun `a replayed approval returns the first decision and moves the balance once`() {
         val account = account(balanceCents = 100)
         val transactionId = UUID.randomUUID()
 
-        authorize(transactionId, account, "DEBIT", "0.30").andExpect {
-            status { isOk() }
-            jsonPath("$.transaction.status") { value("SUCCEEDED") }
-        }
-        authorize(transactionId, account, "DEBIT", "0.30").andExpect {
-            status { isOk() }
-            jsonPath("$.transaction.status") { value("SUCCEEDED") }
-        }
+        val first = authorizeBody(transactionId, account, "DEBIT", "0.30", "SUCCEEDED")
+        val replay = authorizeBody(transactionId, account, "DEBIT", "0.30", "SUCCEEDED")
 
+        assertThat(timestampOf(replay)).isEqualTo(timestampOf(first))
+        assertThat(balanceValueOf(replay)).isEqualTo(balanceValueOf(first))
         assertThat(balanceOf(account)).isEqualTo(70)
+        assertThat(transactionRowsFor(transactionId)).isEqualTo(1)
+    }
+
+    @Test
+    fun `a replayed refusal returns the first decision and leaves the balance untouched`() {
+        val account = account(balanceCents = 100)
+        val transactionId = UUID.randomUUID()
+
+        val first = authorizeBody(transactionId, account, "DEBIT", "2.00", "FAILED")
+        val replay = authorizeBody(transactionId, account, "DEBIT", "2.00", "FAILED")
+
+        assertThat(timestampOf(replay)).isEqualTo(timestampOf(first))
+        assertThat(balanceValueOf(replay)).isEqualTo(balanceValueOf(first))
+        assertThat(balanceOf(account)).isEqualTo(100)
+        assertThat(transactionRowsFor(transactionId)).isEqualTo(1)
+    }
+
+    @Test
+    fun `a replay with a divergent payload returns the first stored decision`() {
+        val account = account(balanceCents = 100)
+        val transactionId = UUID.randomUUID()
+
+        val first = authorizeBody(transactionId, account, "DEBIT", "0.30", "SUCCEEDED")
+        // Same id, different amount: the first decision stands and the balance never moves twice.
+        val replay = authorizeBody(transactionId, account, "DEBIT", "0.50", "SUCCEEDED")
+
+        assertThat(timestampOf(replay)).isEqualTo(timestampOf(first))
+        assertThat(balanceValueOf(replay)).isEqualTo(balanceValueOf(first))
+        assertThat(balanceOf(account)).isEqualTo(70)
+        assertThat(transactionRowsFor(transactionId)).isEqualTo(1)
     }
 
     @Test
@@ -176,12 +209,42 @@ class AuthorizeTransactionEndpointTest : PostgresIntegrationTest() {
         content = body(accountId, type, value)
     }
 
+    private fun authorizeBody(
+        transactionId: UUID,
+        accountId: UUID,
+        type: String,
+        value: String,
+        expectedStatus: String,
+    ): String =
+        authorize(transactionId, accountId, type, value)
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.transaction.status") { value(expectedStatus) }
+            }.andReturn()
+            .response.contentAsString
+
     private fun body(
         accountId: UUID,
         type: String,
         value: String,
         currency: String = "BRL",
     ) = """{"account_id":"$accountId","type":"$type","amount":{"value":$value,"currency":"$currency"}}"""
+
+    private fun timestampOf(responseBody: String): String = read(responseBody, "$.transaction.timestamp")
+
+    private fun balanceValueOf(responseBody: String): String = read(responseBody, "$.account.balance.value")
+
+    private fun read(
+        responseBody: String,
+        path: String,
+    ): String = JsonPath.read<Any?>(responseBody, path).toString()
+
+    private fun transactionRowsFor(transactionId: UUID): Int =
+        jdbcClient
+            .sql("SELECT count(*) FROM transactions WHERE id = :id")
+            .param("id", transactionId)
+            .query(Int::class.java)
+            .single()
 
     private fun account(
         balanceCents: Long,
