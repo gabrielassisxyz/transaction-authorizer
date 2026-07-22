@@ -13,21 +13,34 @@ Direção do projeto: o que existe, o que vem a seguir e o que fica fora de esco
 - **Criação de contas via SQS:** consumer idempotente com ack por mensagem,
   classificação de veneno contra falha transitória, redrive para a dead-letter queue,
   detecção de duplicata divergente e desligamento que espera as mensagens em voo.
+- **Autorização:** `POST /transactions/{transactionId}` com crédito e débito sob a
+  invariante de saldo nunca-negativo, garantida por update condicional atômico;
+  idempotência reservada antes de qualquer mutação de saldo; todos os corner cases
+  testados, incluindo dois débitos concorrentes na mesma conta.
+- **Production-ready:** espera com full jitter antes de nova tentativa no consumer,
+  métricas em endpoint Prometheus, logs JSON com correlação, grupos de health separando
+  banco e fila, imagem conteinerizada e smoke de ponta a ponta.
+- **Narrativa de operação:** OpenAPI e coleção de requisições, `docs/failure-modes.md`
+  por componente, diagrama de deploy em cloud pública e proposta de pipeline canário.
 
 ## Próximos passos
 
-1. **Autorização.** `POST /transactions/{transactionId}` com crédito e débito sob a
-   invariante de saldo nunca-negativo, garantida por update condicional atômico;
-   idempotência reservada antes de qualquer mutação de saldo; todos os corner cases
-   testados, incluindo dois débitos concorrentes na mesma conta.
-2. **Production-ready.** Espera com full jitter antes de nova tentativa no consumer;
-   métricas expostas em endpoint Prometheus; logs JSON com correlação; grupos de
-   health separando banco e fila; OpenAPI e coleção de requisições.
-3. **Narrativa de operação.** Diagrama de deploy em cloud pública; proposta de
-   pipeline com estratégia de deploy de risco limitado (blue/green ou canary);
-   `docs/failure-modes.md`.
-4. **Prova de carga.** Cenário k6 com gerador e servidor em máquinas isoladas;
+1. **Prova de carga.** Cenário k6 com gerador e servidor em máquinas isoladas;
    throughput e p99 documentados em `docs/load/`.
+
+## Com mais tempo
+
+Direções que o desenho atual já comporta e que um horizonte maior justificaria:
+
+- **Outbox para efeitos colaterais exactly-once:** hoje a decisão é durável no banco, mas
+  uma notificação ou publicação de evento a jusante seria at-least-once. Uma tabela de
+  outbox escrita na mesma transação da autorização, drenada por um relay, fecharia isso.
+- **Testes de contrato:** o esquema de requisição é uma suposição derivada da resposta
+  exigida. Um teste de contrato contra o produtor real da fila e contra os consumidores da
+  API travaria o formato antes de uma quebra chegar a produção.
+- **Postura multi-região:** o serviço é sem estado, então o que decide a estratégia é o
+  banco. Ativo-passivo com réplica de leitura promovível é o passo natural; ativo-ativo
+  exigiria repensar a serialização do saldo, que hoje é local ao Postgres.
 
 ## Fora de escopo
 
