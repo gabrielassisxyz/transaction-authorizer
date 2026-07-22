@@ -25,6 +25,10 @@ COPY --from=build /workspace/extracted/snapshot-dependencies/ ./
 COPY --from=build /workspace/extracted/application/ ./
 USER app
 EXPOSE 8080
+# Readiness, not liveness: this gate exists for compose dependents waiting on service_healthy,
+# where the right signal is whether the app can serve, not merely that the process is up. A
+# database blip does not restart the container through here, since restarts follow the
+# orchestrator's own probes rather than the Docker healthcheck.
 HEALTHCHECK --interval=10s --timeout=3s --start-period=60s --retries=10 \
     CMD curl -fsS http://localhost:8080/actuator/health/readiness || exit 1
 ENTRYPOINT ["java", "-jar", "application.jar"]
