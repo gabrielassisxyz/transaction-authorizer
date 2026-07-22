@@ -89,7 +89,10 @@ abstract class SqsIntegrationTest protected constructor() {
             // A single poller keeps the assertions about who consumed what unambiguous.
             registry.add("sqs.pollers") { 1 }
             registry.add("sqs.wait-time") { "1s" }
-            registry.add("sqs.retry-delay") { "100ms" }
+            // Tiny backoff so a transient failure retries within the visibility timeout and
+            // the suite stays fast; the full-jitter maths itself is covered by PollBackoffTest.
+            registry.add("sqs.backoff-base") { "20ms" }
+            registry.add("sqs.backoff-cap") { "50ms" }
         }
     }
 }

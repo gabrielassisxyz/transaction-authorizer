@@ -12,6 +12,7 @@ import software.amazon.awssdk.services.sqs.model.GetQueueUrlRequest
 import software.amazon.awssdk.services.sqs.model.Message
 import software.amazon.awssdk.services.sqs.model.MessageSystemAttributeName
 import software.amazon.awssdk.services.sqs.model.ReceiveMessageRequest
+import java.time.Duration
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -19,6 +20,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 @Component
+@Suppress("TooManyFunctions")
 class AccountCreatedConsumer(
     private val sqsClient: SqsClient,
     private val properties: SqsProperties,
@@ -29,6 +31,7 @@ class AccountCreatedConsumer(
     private val log = LoggerFactory.getLogger(javaClass)
     private val running = AtomicBoolean(false)
     private var stopped = CountDownLatch(0)
+    private val backoff = PollBackoff(properties.backoffBase, properties.backoffCap)
 
     // Built per start, never once per bean: a stopped executor rejects every task, so a
     // context that is stopped and started again would come back with silent pollers.
@@ -63,26 +66,31 @@ class AccountCreatedConsumer(
     override fun isRunning(): Boolean = running.get()
 
     private fun poll() {
+        var attempt = 0
         try {
             while (running.get() && !Thread.currentThread().isInterrupted) {
-                pollOnce()
+                attempt = if (pollCycle()) 0 else backOff(attempt)
             }
         } finally {
             stopped.countDown()
         }
     }
 
-    // Throwable, not Exception: the executor never replaces a thread that ended, so one
-    // `NoClassDefFoundError` would retire this poller while `isRunning` still says true.
+    // One receive-and-handle cycle. Returns false when it hit a transient error worth backing
+    // off for: the queue was unreachable, or at least one message could not be processed.
+    // Throwable, not Exception, on receive: the executor never replaces a thread that ended,
+    // so one `NoClassDefFoundError` would retire this poller while `isRunning` still says true.
     @Suppress("TooGenericExceptionCaught")
-    private fun pollOnce() {
-        try {
-            receive().forEach(::handle)
-        } catch (t: Throwable) {
-            meterRegistry.counter("sqs.messages", "outcome", "receive_failed").increment()
-            log.error("failed to receive from queue {}", properties.queueName, t)
-            sleepBeforeRetry()
-        }
+    private fun pollCycle(): Boolean {
+        val messages =
+            try {
+                receive()
+            } catch (t: Throwable) {
+                meterRegistry.counter("sqs.messages", "outcome", "receive_failed").increment()
+                log.error("failed to receive from queue {}", properties.queueName, t)
+                return false
+            }
+        return messages.map(::handle).all { it }
     }
 
     private fun receive(): List<Message> {
@@ -97,25 +105,29 @@ class AccountCreatedConsumer(
         return sqsClient.receiveMessage(request).messages()
     }
 
-    private fun handle(message: Message) {
+    // Returns true when the message was dealt with (created, or discarded as poison) and
+    // false on a transient failure, so the poll loop knows whether to reset or grow the
+    // backoff. A poison message counts as dealt with: it is not a failing dependency.
+    private fun handle(message: Message): Boolean {
         MDC.put(MESSAGE_ID, message.messageId())
         message
             .attributes()[MessageSystemAttributeName.APPROXIMATE_RECEIVE_COUNT]
             ?.let { MDC.put(RECEIVE_COUNT, it) }
         try {
-            process(message)
+            return process(message)
         } finally {
             MDC.remove(MESSAGE_ID)
             MDC.remove(RECEIVE_COUNT)
         }
     }
 
-    @Suppress("TooGenericExceptionCaught")
-    private fun process(message: Message) {
+    @Suppress("TooGenericExceptionCaught", "ReturnCount")
+    private fun process(message: Message): Boolean {
         try {
             createAccountService.create(parser.parse(message.body()))
             delete(message)
             meterRegistry.counter("sqs.messages", "outcome", "processed").increment()
+            return true
         } catch (e: MalformedAccountEventException) {
             // Not deleted on purpose: the redrive policy is the retry budget, so the
             // message has to reach the dead-letter queue instead of dying here.
@@ -126,10 +138,11 @@ class AccountCreatedConsumer(
                 message.attributes()[MessageSystemAttributeName.APPROXIMATE_RECEIVE_COUNT],
                 e.message,
             )
+            return true
         } catch (e: Exception) {
             meterRegistry.counter("sqs.messages", "outcome", "failed").increment()
             log.error("failed to process message {}", message.messageId(), e)
-            sleepBeforeRetry()
+            return false
         }
     }
 
@@ -143,11 +156,23 @@ class AccountCreatedConsumer(
         )
     }
 
+    private fun backOff(attempt: Int): Int {
+        val delay = backoff.durationFor(attempt)
+        log.warn(
+            "backing off {} on queue {} after {} consecutive poll failures",
+            delay,
+            properties.queueName,
+            attempt + 1,
+        )
+        sleep(delay)
+        return attempt + 1
+    }
+
     // Must not clear `running`, which is shared: restoring the interrupt flag stops
     // this poller alone, through its own loop condition.
-    private fun sleepBeforeRetry() {
+    private fun sleep(delay: Duration) {
         try {
-            Thread.sleep(properties.retryDelay.toMillis())
+            Thread.sleep(delay.toMillis())
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
         }
