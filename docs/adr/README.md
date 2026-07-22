@@ -6,10 +6,8 @@ o contexto, a decisão, as consequências e as alternativas que foram pesadas e 
 | ADR | Decisão |
 |---|---|
 | [001](001-spring-mvc-com-virtual-threads.md) | Spring MVC com virtual threads, não WebFlux nem coroutines |
+| [002](002-controle-de-concorrencia-do-saldo.md) | Controle de concorrência do saldo por atualização condicional atômica |
 | [003](003-dinheiro-em-centavos-inteiros.md) | Dinheiro em centavos inteiros e moeda única |
+| [004](004-idempotencia-da-autorizacao.md) | Idempotência da autorização por tabela de claims e hash da requisição |
 | [005](005-consumer-sqs-com-sdk-v2-e-ack-por-mensagem.md) | Consumer SQS com AWS SDK v2, ack por mensagem e dead-letter queue |
-
-Os números ausentes estão reservados para decisões cuja implementação ainda não
-chegou, e ficam com o número desde já para que o texto que já as referencia não precise
-ser renumerado: 002 para o controle de concorrência do saldo, 004 para a idempotência
-da autorização, 006 para a semântica HTTP da recusa.
+| [006](006-semantica-http-da-recusa.md) | Semântica HTTP da recusa: recusa é 200, erro é ProblemDetail |
