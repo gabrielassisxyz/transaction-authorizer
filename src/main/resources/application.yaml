@@ -28,6 +28,20 @@ spring:
   flyway:
     enabled: true
 
+management:
+  endpoints:
+    web:
+      exposure:
+        # Only what is meant to be scraped or probed. Prometheus is the metrics scrape;
+        # health carries the liveness/readiness groups. Nothing else is exposed by default.
+        include: health,info,prometheus
+  # Metric exporters are opt-in from Boot 4, so the Prometheus scrape registry and its
+  # endpoint have to be turned on explicitly; without this the endpoint is absent.
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
 sqs:
   region: ${AWS_REGION:sa-east-1}
   # Empty in a real deployment: the SDK then resolves the regional endpoint, and with no

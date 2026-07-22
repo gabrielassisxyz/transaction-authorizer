@@ -25,6 +25,9 @@ repositories {
 
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+    // Micrometer's Prometheus registry: the scrape endpoint at /actuator/prometheus is what
+    // the load campaign and dashboards read, so it ships with the app, not as a test-only dep.
+    runtimeOnly("io.micrometer:micrometer-registry-prometheus")
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation(platform(libs.aws.bom))

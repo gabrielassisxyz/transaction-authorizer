@@ -5,6 +5,7 @@ import com.transactionauthorizer.application.port.AuthorizationResult
 import com.transactionauthorizer.application.port.TransactionStore
 import com.transactionauthorizer.domain.Money
 import com.transactionauthorizer.domain.TransactionType
+import io.micrometer.core.instrument.MeterRegistry
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DuplicateKeyException
 import org.springframework.jdbc.core.simple.JdbcClient
@@ -24,8 +25,10 @@ import java.util.UUID
 // order is always claims then accounts, so the flow cannot deadlock. Works at READ
 // COMMITTED. Design rationale in docs/adr/002, 004 and 006.
 @Repository
+@Suppress("TooManyFunctions")
 class JdbcTransactionStore(
     private val jdbcClient: JdbcClient,
+    private val meterRegistry: MeterRegistry,
     transactionManager: PlatformTransactionManager,
 ) : TransactionStore {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -36,7 +39,10 @@ class JdbcTransactionStore(
         // Fast paths, no transaction: an id already decided replays its stored result, and a
         // missing account answers without opening a write transaction or claiming the id.
         findStored(command.transactionId)?.let { return reconcile(it, command) }
-        if (!accountExists(command.accountId)) return AuthorizationResult.AccountNotFound
+        if (!accountExists(command.accountId)) {
+            recordOutcome("account_not_found", "account_not_found")
+            return AuthorizationResult.AccountNotFound
+        }
 
         return try {
             transaction.execute { status -> authorizeGuarded(command, status) }
@@ -61,6 +67,7 @@ class JdbcTransactionStore(
 
         val balanceAfter = guardedUpdate(command)
         if (balanceAfter != null) {
+            recordOutcome("approved", "applied")
             return AuthorizationResult.Approved(record(command, "SUCCEEDED", balanceAfter, ts), ts)
         }
         return resolveUnderLock(command, status, ts)
@@ -81,10 +88,17 @@ class JdbcTransactionStore(
             // flight, which never happens here. Roll back so the claim leaves no orphan and
             // a later retry can still succeed.
             status.setRollbackOnly()
+            recordOutcome("account_not_found", "account_not_found")
             return AuthorizationResult.AccountNotFound
         }
         if (locked.status != ENABLED) {
-            return refuse(command, locked.balanceCents, ts, "account ${command.accountId} is ${locked.status}")
+            return refuse(
+                command,
+                locked.balanceCents,
+                ts,
+                "account_disabled",
+                "account ${command.accountId} is ${locked.status}",
+            )
         }
         val amount = command.amount.cents
         val fits =
@@ -93,13 +107,13 @@ class JdbcTransactionStore(
                 TransactionType.CREDIT -> locked.balanceCents <= Money.MAX.cents - amount
             }
         if (!fits) {
-            val reason =
+            val (reasonCode, reason) =
                 if (command.type == TransactionType.DEBIT) {
-                    "insufficient funds on account ${command.accountId}"
+                    "insufficient_funds" to "insufficient funds on account ${command.accountId}"
                 } else {
-                    "credit would overflow the balance of account ${command.accountId}"
+                    "credit_overflow" to "credit would overflow the balance of account ${command.accountId}"
                 }
-            return refuse(command, locked.balanceCents, ts, reason)
+            return refuse(command, locked.balanceCents, ts, reasonCode, reason)
         }
         // A concurrent movement freed room between the guarded update and this lock, so the
         // debit or credit is applied under the held lock.
@@ -111,6 +125,7 @@ class JdbcTransactionStore(
                 .param("id", command.accountId)
                 .query(Long::class.java)
                 .single()
+        recordOutcome("approved", "applied")
         return AuthorizationResult.Approved(record(command, "SUCCEEDED", balanceAfter, ts), ts)
     }
 
@@ -118,9 +133,11 @@ class JdbcTransactionStore(
         command: AuthorizationCommand,
         balanceAfter: Long,
         ts: Instant,
+        reasonCode: String,
         reason: String,
     ): AuthorizationResult.Refused {
         log.info("transaction {} refused: {}", command.transactionId, reason)
+        recordOutcome("refused", reasonCode)
         return AuthorizationResult.Refused(record(command, "FAILED", balanceAfter, ts), ts)
     }
 
@@ -131,6 +148,7 @@ class JdbcTransactionStore(
         if (stored.requestHash != command.requestHash) {
             // The first decision stands, but a reused id carrying a different request is
             // evidence of a caller defect, so it does not pass unremarked.
+            meterRegistry.counter("transactions.duplicate.payload").increment()
             log.warn(
                 "transaction {} replayed with a different payload; keeping the first decision",
                 command.transactionId,
@@ -138,11 +156,18 @@ class JdbcTransactionStore(
         }
         val balance = Money(stored.balanceAfter)
         return if (stored.result == "SUCCEEDED") {
+            recordOutcome("approved", "replay")
             AuthorizationResult.Approved(balance, stored.timestamp)
         } else {
+            recordOutcome("refused", "replay")
             AuthorizationResult.Refused(balance, stored.timestamp)
         }
     }
+
+    private fun recordOutcome(
+        outcome: String,
+        reason: String,
+    ) = meterRegistry.counter("authorizations", "outcome", outcome, "reason", reason).increment()
 
     private fun guardedUpdate(command: AuthorizationCommand): Long? =
         when (command.type) {
