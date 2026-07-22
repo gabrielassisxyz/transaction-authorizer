@@ -137,6 +137,11 @@ config, commit messages, PR titles and bodies.
   no redrive policy. `sqs-configurator` must run first; compose already orders it.
 - Localstack SQS credentials are dummy (`test`/`test`, region `sa-east-1`,
   endpoint `http://localhost:4566`).
+- Boot 4 makes metric exporters opt-in: the Prometheus scrape registry and its
+  `/actuator/prometheus` endpoint stay absent (a 404) until
+  `management.prometheus.metrics.export.enabled=true` is set, even with the registry on
+  the classpath and the endpoint exposed. The condition report names it
+  `management.defaults.metrics.export.enabled is considered false`.
 - Append a line here on every gotcha discovered.
 
 <!-- BEGIN universal-principles v3 -->

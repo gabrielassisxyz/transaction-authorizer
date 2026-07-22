@@ -7,6 +7,8 @@ import java.time.Duration
 // mid-batch, and stay under Spring's own per-phase timeout of 30s, or Spring cuts first.
 private const val LONG_POLL_SECONDS = 20L
 private const val SHUTDOWN_TIMEOUT_SECONDS = 25L
+private const val BACKOFF_BASE_SECONDS = 1L
+private const val BACKOFF_CAP_SECONDS = 30L
 
 @ConfigurationProperties(prefix = "sqs")
 data class SqsProperties(
@@ -18,6 +20,9 @@ data class SqsProperties(
     val pollers: Int = 2,
     val batchSize: Int = 10,
     val waitTime: Duration = Duration.ofSeconds(LONG_POLL_SECONDS),
-    val retryDelay: Duration = Duration.ofSeconds(2),
+    // Full-jitter backoff bounds for the poll loop: the first failure waits within
+    // [0, backoffBase] and doubles the ceiling per consecutive failure up to backoffCap.
+    val backoffBase: Duration = Duration.ofSeconds(BACKOFF_BASE_SECONDS),
+    val backoffCap: Duration = Duration.ofSeconds(BACKOFF_CAP_SECONDS),
     val shutdownTimeout: Duration = Duration.ofSeconds(SHUTDOWN_TIMEOUT_SECONDS),
 )

@@ -29,6 +29,26 @@ jobs:
             | tar -xz -C /usr/local/bin gitleaks
       - run: bin/ci
 
+  # Mutation testing on the domain, deliberately its own job and not part of bin/ci: it is
+  # slow and advisory, so it informs test quality without gating merges. No mutation
+  # threshold is set, so the job stays green while surfacing the score in its log.
+  mutation:
+    if: github.event_name != 'pull_request' || github.event.action != 'edited'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew pitest
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pitest-report
+          path: build/reports/pitest
+
   slop-guard-pr:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

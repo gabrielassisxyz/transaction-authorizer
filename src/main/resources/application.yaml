@@ -1,3 +1,11 @@
+logging:
+  # 12-factor: logs are an event stream to stdout as JSON, and the platform ships them.
+  # Boot renders this natively, so it costs no extra dependency; MDC keys ride along as
+  # top-level fields, which is what lets one grep follow a request or a message.
+  structured:
+    format:
+      console: logstash
+
 spring:
   application:
     name: transaction-authorizer
@@ -19,6 +27,36 @@ spring:
       ddl-auto: validate
   flyway:
     enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Only what is meant to be scraped or probed. Prometheus is the metrics scrape;
+        # health carries the liveness/readiness groups. Nothing else is exposed by default.
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-components: always
+      show-details: always
+      probes:
+        enabled: true
+      group:
+        # Liveness carries no dependency: the process is alive, so a dependency outage
+        # must never restart it and cascade.
+        liveness:
+          include: livenessState
+        # Readiness is what the load balancer follows, so it tracks the database only: no
+        # database, no authorization, pull the instance. SQS is intentionally absent, since
+        # a queue outage must not yank the HTTP authorizer out of rotation.
+        readiness:
+          include: readinessState,db
+  # Metric exporters are opt-in from Boot 4, so the Prometheus scrape registry and its
+  # endpoint have to be turned on explicitly; without this the endpoint is absent.
+  prometheus:
+    metrics:
+      export:
+        enabled: true
 
 sqs:
   region: ${AWS_REGION:sa-east-1}

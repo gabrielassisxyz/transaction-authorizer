@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.ktlint)
     alias(libs.plugins.detekt)
     alias(libs.plugins.kover)
+    alias(libs.plugins.pitest)
 }
 
 group = "com.transactionauthorizer"
@@ -25,6 +26,9 @@ repositories {
 
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+    // Micrometer's Prometheus registry: the scrape endpoint at /actuator/prometheus is what
+    // the load campaign and dashboards read, so it ships with the app, not as a test-only dep.
+    runtimeOnly("io.micrometer:micrometer-registry-prometheus")
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation(platform(libs.aws.bom))
@@ -50,6 +54,20 @@ dependencies {
     testImplementation(libs.archunit.junit5)
     testImplementation(libs.mockk)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    // The junit5 plugin on the pitest classpath is enough for PIT to detect the engine.
+    pitest(libs.pitest.junit5)
+}
+
+pitest {
+    // Mutation testing is scoped to the pure domain: that is where the arithmetic and the
+    // invariants live, so a surviving mutant there points at a genuinely weak test. It is
+    // advisory and never a merge gate, so no mutation threshold is set: the report informs,
+    // it does not fail the build. It runs as its own non-blocking CI job; bin/ci stays the
+    // single blocking gate.
+    targetClasses.set(listOf("com.transactionauthorizer.domain.*"))
+    targetTests.set(listOf("com.transactionauthorizer.domain.*"))
+    outputFormats.set(listOf("HTML", "XML"))
+    timestampedReports.set(false)
 }
 
 kotlin {

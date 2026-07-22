@@ -34,6 +34,31 @@ ambiente: `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `DB_POOL_SIZE`, `SQS_ENDPOINT`
 `AWS_SECRET_ACCESS_KEY`. Em ambiente real, `SQS_ENDPOINT` fica vazio (o SDK resolve o
 endpoint da região) e as chaves também, e aí a credencial vem da role da instância.
 
+## Execução conteinerizada
+
+A aplicação também roda como imagem, e um único comando sobe o sistema inteiro. O
+serviço da aplicação fica atrás do profile `app`, então o compose padrão continua
+servindo o fluxo com `bootRun`:
+
+```bash
+# Sobe dependências, semeia as mensagens e sobe a aplicação já conteinerizada
+docker compose --profile app up --build
+```
+
+A imagem é multi-stage: build no JDK 21 e runtime num JRE slim, com o jar em camadas
+para as dependências cacharem separadas do código, rodando como usuário sem privilégio.
+O serviço espera o `message-generator` terminar antes de subir, então na primeira
+execução já há mensagens para drenar.
+
+## Observabilidade
+
+- Logs estruturados em JSON no stdout, com `transactionId` na via HTTP e `messageId` na
+  via de consumo para correlação.
+- Métricas Prometheus em `/actuator/prometheus`, incluindo `authorizations`,
+  `sqs_messages` e a saturação do pool HikariCP.
+- Health em grupos: `/actuator/health/liveness` sem dependência,
+  `/actuator/health/readiness` seguindo o banco, e o SQS como componente à parte.
+
 ## Autorização de transações
 
 `POST /transactions/{transactionId}` autoriza um crédito ou débito contra o saldo. O
@@ -55,8 +80,16 @@ ou valor fora da faixa é 422, todos como `application/problem+json`. Contrato c
 ## Verificação
 
 ```bash
-bin/ci   # formato, lint, testes e cobertura — o mesmo gate do CI
+bin/ci    # formato, lint, testes e cobertura, o mesmo gate do CI
+bin/e2e   # smoke de ponta a ponta sobre o sistema conteinerizado (Docker, curl e jq)
+bin/chaos # derruba o Postgres no meio do consumo e prova a resiliência (Docker e curl)
 ```
+
+`bin/e2e` sobe o sistema inteiro com o profile `app`, espera a semente e a readiness,
+credita e debita uma conta semeada, confere a recusa por saldo, o replay idempotente e o
+404, e derruba tudo ao final. É o ensaio do primeiro contato de quem chega pelo README,
+rodado localmente antes de uma entrega. Não integra o `bin/ci` porque sobe containers e a
+semente de 100 mil mensagens.
 
 ## Documentação
 

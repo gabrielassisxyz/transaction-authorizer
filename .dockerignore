@@ -1,0 +1,9 @@
+.git
+.gradle
+build
+local
+docs
+*.md
+.github
+.githooks
+bin

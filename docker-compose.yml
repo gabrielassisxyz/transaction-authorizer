@@ -87,3 +87,32 @@ services:
         go run message-generator.go
       "
     working_dir: /home
+
+  # Behind the `app` profile so the default compose still serves the bootRun workflow: with
+  # `docker compose --profile app up` one command runs the whole system containerized. It
+  # waits for the seed to finish so a first run has messages to drain, and points at the
+  # compose service names, not localhost.
+  app:
+    profiles: [ "app" ]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: transaction-authorizer
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+      message-generator:
+        condition: service_completed_successfully
+    environment:
+      - DB_URL=jdbc:postgresql://postgres:5432/transaction_authorizer
+      - DB_USERNAME=authorizer
+      - DB_PASSWORD=authorizer
+      - SQS_ENDPOINT=http://localstack:4566
+      - AWS_REGION=sa-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - SQS_QUEUE_NAME=conta-bancaria-criada
+    ports:
+      - "127.0.0.1:8080:8080"

@@ -66,15 +66,30 @@ class AccountCreatedConsumerIntegrationTest : SqsIntegrationTest() {
     }
 
     @Test
-    fun `an unparseable message ends up in the dead-letter queue without stopping the consumer`() {
+    fun `an unparseable message ends up in the dead-letter queue and counts as poison`() {
+        val poisonBefore = poisonCount()
         send("""{"account":{"id":"not-a-uuid"}}""")
 
         await().atMost(TIMEOUT).untilAsserted {
             assertThat(deadLetterQueueDepth()).isPositive()
+            assertThat(poisonCount()).isGreaterThan(poisonBefore)
         }
 
         val accountId = UUID.randomUUID()
         send(event(accountId, UUID.randomUUID()))
+        await().atMost(TIMEOUT).untilAsserted { assertThat(rowCountOf(accountId)).isEqualTo(1) }
+    }
+
+    @Test
+    fun `an event whose created_at is iso-8601 still becomes an account`() {
+        val accountId = UUID.randomUUID()
+        val ownerId = UUID.randomUUID()
+
+        send(
+            """{"account":{"id":"$accountId","owner":"$ownerId",""" +
+                """"created_at":"2020-01-02T03:04:05Z","status":"ENABLED"}}""",
+        )
+
         await().atMost(TIMEOUT).untilAsserted { assertThat(rowCountOf(accountId)).isEqualTo(1) }
     }
 
@@ -127,6 +142,8 @@ class AccountCreatedConsumerIntegrationTest : SqsIntegrationTest() {
             .single()
 
     private fun counter(name: String): Double = meterRegistry.counter(name).count()
+
+    private fun poisonCount(): Double = meterRegistry.counter("sqs.messages", "outcome", "poison").count()
 
     private companion object {
         val TIMEOUT: Duration = Duration.ofSeconds(30)
