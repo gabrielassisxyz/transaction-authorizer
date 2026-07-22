@@ -35,6 +35,22 @@ services:
       retries: 5
       start_period: 15s
 
+  sqs-configurator:
+    image: amazon/aws-cli:2.31.19
+    container_name: sqs-configurator
+    depends_on:
+      localstack:
+        condition: service_healthy
+    environment:
+      - AWS_DEFAULT_REGION=sa-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - QUEUE_NAME=conta-bancaria-criada
+      - LOCALSTACK_ENDPOINT=http://localstack:4566
+    volumes:
+      - ./docker/sqs-configurator.sh:/sqs-configurator.sh:ro
+    entrypoint: [ "/bin/sh", "/sqs-configurator.sh" ]
+
   message-generator:
     image: golang:1.24.3
     container_name: message-generator
@@ -42,6 +58,10 @@ services:
       localstack:
         condition: service_healthy
         restart: true
+      # The generator creates the queue if it is missing, and a queue created that way
+      # has no redrive policy, so the topology has to exist before the first message.
+      sqs-configurator:
+        condition: service_completed_successfully
     environment:
       # SQS settings
       - QUEUE_NAME=conta-bancaria-criada

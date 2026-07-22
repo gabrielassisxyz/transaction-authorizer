@@ -11,17 +11,28 @@ produção hoje, não uma versão presa por inércia: os recursos de que o servi
 depende (virtual threads, entre outros) já são estáveis nela.
 
 ```bash
-# 1. Sobe localstack (fila SQS semeada com 100k contas) e Postgres
+# 1. Sobe Postgres, localstack, a topologia de filas e o gerador de 100k mensagens
 docker compose up -d
 
 # 2. Aguarda a mensagem "message-generator exited with code 0" nos logs
 docker compose logs -f message-generator
 
-# 3. Roda a aplicação
+# 3. Roda a aplicação — ela consome a fila e cria as contas
 ./gradlew bootRun
 ```
 
 Health check: `curl http://localhost:8080/actuator/health`
+
+O compose sobe quatro serviços: Postgres, localstack, um `sqs-configurator` que cria a
+fila principal e a sua dead-letter queue com política de redrive, e o
+`message-generator`, que semeia as 100 mil mensagens e termina. A aplicação nunca cria
+filas: o que ela espera encontrar é criado por infraestrutura, aqui e em produção.
+
+Toda a configuração tem padrão para execução local e é sobrescrevível por variável de
+ambiente: `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `DB_POOL_SIZE`, `SQS_ENDPOINT`,
+`SQS_QUEUE_NAME`, `SQS_POLLERS`, `AWS_REGION`, `AWS_ACCESS_KEY_ID` e
+`AWS_SECRET_ACCESS_KEY`. Em ambiente real, `SQS_ENDPOINT` fica vazio (o SDK resolve o
+endpoint da região) e as chaves também, e aí a credencial vem da role da instância.
 
 ## Verificação
 

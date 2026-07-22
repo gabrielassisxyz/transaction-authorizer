@@ -27,6 +27,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    implementation(platform(libs.aws.bom))
+    implementation(libs.aws.sqs)
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("tools.jackson.module:jackson-module-kotlin")
     // Boot 4 split autoconfiguration per technology: `flyway-core` alone is on the
@@ -42,6 +44,8 @@ dependencies {
     // coordinates (`org.testcontainers:postgresql`) no longer exist in the BOM.
     testImplementation("org.testcontainers:testcontainers-junit-jupiter")
     testImplementation("org.testcontainers:testcontainers-postgresql")
+    testImplementation("org.testcontainers:testcontainers-localstack")
+    testImplementation("org.awaitility:awaitility")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
     testImplementation(libs.archunit.junit5)
     testImplementation(libs.mockk)

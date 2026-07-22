@@ -19,3 +19,14 @@ spring:
       ddl-auto: validate
   flyway:
     enabled: true
+
+sqs:
+  region: ${AWS_REGION:sa-east-1}
+  # Empty in a real deployment: the SDK then resolves the regional endpoint, and with no
+  # endpoint override the credentials come from the default chain rather than from the
+  # keys below, which exist only for the local emulator.
+  endpoint: ${SQS_ENDPOINT:http://localhost:4566}
+  access-key: ${AWS_ACCESS_KEY_ID:test}
+  secret-key: ${AWS_SECRET_ACCESS_KEY:test}
+  queue-name: ${SQS_QUEUE_NAME:conta-bancaria-criada}
+  pollers: ${SQS_POLLERS:2}

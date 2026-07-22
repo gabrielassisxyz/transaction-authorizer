@@ -130,6 +130,11 @@ config, commit messages, PR titles and bodies.
 
 - The `message-generator` compose service seeds 100k messages and exits; wait for
   `message-generator exited with code 0` before consuming.
+- The seeded message body carries `created_at` as **epoch seconds in a JSON string**
+  (`"created_at":"1751000000"`), not the ISO-8601 the written contract describes. The
+  parser accepts both; do not "fix" it to one shape.
+- The generator creates the queue when it is missing, and a queue created that way has
+  no redrive policy. `sqs-configurator` must run first; compose already orders it.
 - Localstack SQS credentials are dummy (`test`/`test`, region `sa-east-1`,
   endpoint `http://localhost:4566`).
 - Append a line here on every gotcha discovered.
