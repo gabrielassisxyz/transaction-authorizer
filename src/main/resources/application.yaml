@@ -1,3 +1,11 @@
+logging:
+  # 12-factor: logs are an event stream to stdout as JSON, and the platform ships them.
+  # Boot renders this natively, so it costs no extra dependency; MDC keys ride along as
+  # top-level fields, which is what lets one grep follow a request or a message.
+  structured:
+    format:
+      console: logstash
+
 spring:
   application:
     name: transaction-authorizer

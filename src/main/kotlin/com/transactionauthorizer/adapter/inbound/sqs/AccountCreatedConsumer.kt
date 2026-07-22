@@ -3,6 +3,7 @@ package com.transactionauthorizer.adapter.inbound.sqs
 import com.transactionauthorizer.application.CreateAccountService
 import io.micrometer.core.instrument.MeterRegistry
 import org.slf4j.LoggerFactory
+import org.slf4j.MDC
 import org.springframework.context.SmartLifecycle
 import org.springframework.stereotype.Component
 import software.amazon.awssdk.services.sqs.SqsClient
@@ -96,8 +97,21 @@ class AccountCreatedConsumer(
         return sqsClient.receiveMessage(request).messages()
     }
 
-    @Suppress("TooGenericExceptionCaught")
     private fun handle(message: Message) {
+        MDC.put(MESSAGE_ID, message.messageId())
+        message
+            .attributes()[MessageSystemAttributeName.APPROXIMATE_RECEIVE_COUNT]
+            ?.let { MDC.put(RECEIVE_COUNT, it) }
+        try {
+            process(message)
+        } finally {
+            MDC.remove(MESSAGE_ID)
+            MDC.remove(RECEIVE_COUNT)
+        }
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private fun process(message: Message) {
         try {
             createAccountService.create(parser.parse(message.body()))
             delete(message)
@@ -143,5 +157,10 @@ class AccountCreatedConsumer(
         sqsClient
             .getQueueUrl(GetQueueUrlRequest.builder().queueName(properties.queueName).build())
             .queueUrl()
+    }
+
+    private companion object {
+        const val MESSAGE_ID = "messageId"
+        const val RECEIVE_COUNT = "receiveCount"
     }
 }
