@@ -77,7 +77,11 @@ class AccountCreatedConsumer(
     }
 
     // One receive-and-handle cycle. Returns false when it hit a transient error worth backing
-    // off for: the queue was unreachable, or at least one message could not be processed.
+    // off for: the queue was unreachable, or a message could not be processed. It stops at the
+    // first transient failure rather than grinding through the rest of the batch: during a
+    // dependency outage every remaining message would fail the same way, each paying a full
+    // connection timeout, so failing fast and backing off is both quicker and gentler on the
+    // recovering dependency. The undeleted messages simply redrive.
     // Throwable, not Exception, on receive: the executor never replaces a thread that ended,
     // so one `NoClassDefFoundError` would retire this poller while `isRunning` still says true.
     @Suppress("TooGenericExceptionCaught")
@@ -90,7 +94,7 @@ class AccountCreatedConsumer(
                 log.error("failed to receive from queue {}", properties.queueName, t)
                 return false
             }
-        return messages.map(::handle).all { it }
+        return messages.all(::handle)
     }
 
     private fun receive(): List<Message> {
