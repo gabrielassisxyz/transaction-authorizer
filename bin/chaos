@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# bin/chaos: resilience check over the composed system. Kill Postgres mid-consume and prove
+# the consumer copes: it survives, the poll-loop backoff shows in the logs, nothing valid is
+# lost to the dead-letter queue, no account is applied twice (the idempotent create absorbs
+# redelivery), and consumption resumes once Postgres returns. Needs Docker and curl.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+APP="${APP_BASE_URL:-http://localhost:8080}"
+SLEEP=5
+
+cleanup() { docker compose --profile app down -v >/dev/null 2>&1 || true; }
+trap cleanup EXIT
+
+fail() {
+    echo "FAIL: $*" >&2
+    exit 1
+}
+
+psql_one() {
+    docker compose exec -T postgres \
+        psql -U authorizer -d transaction_authorizer -tAc "$1"
+}
+
+app_state() { docker compose ps app --format '{{.State}}' 2>/dev/null; }
+
+dlq_depth() {
+    local url
+    url=$(docker compose exec -T localstack \
+        awslocal sqs get-queue-url --queue-name conta-bancaria-criada-dlq \
+        --query QueueUrl --output text 2>/dev/null) || return 0
+    docker compose exec -T localstack \
+        awslocal sqs get-queue-attributes --queue-url "$url" \
+        --attribute-names ApproximateNumberOfMessages \
+        --query 'Attributes.ApproximateNumberOfMessages' --output text 2>/dev/null || echo 0
+}
+
+echo "==> bringing the system up from scratch"
+docker compose --profile app down -v >/dev/null 2>&1 || true
+docker compose --profile app up -d --build
+
+echo "==> waiting for app readiness"
+ready=""
+for _ in $(seq 1 60); do
+    if curl -fsS "$APP/actuator/health/readiness" 2>/dev/null | grep -q '"status":"UP"'; then
+        ready=1
+        break
+    fi
+    sleep "$SLEEP"
+done
+[ -n "$ready" ] || fail "app never reported readiness UP"
+
+echo "==> waiting until the consumer is mid-flight (some accounts landed, many still queued)"
+before=0
+for _ in $(seq 1 60); do
+    before=$(psql_one "SELECT count(*) FROM accounts")
+    [ "${before:-0}" -gt 0 ] && break
+    sleep "$SLEEP"
+done
+[ "${before:-0}" -gt 0 ] || fail "no accounts were consumed before the outage"
+echo "    consumed $before accounts before the outage"
+
+echo "==> killing Postgres mid-consume"
+docker compose stop postgres
+
+echo "==> the consumer must survive and back off"
+backoff=""
+for _ in $(seq 1 40); do
+    [ "$(app_state)" = "running" ] || fail "app exited during the Postgres outage"
+    if docker compose logs app 2>/dev/null | grep -q "backing off"; then
+        backoff=1
+        break
+    fi
+    sleep "$SLEEP"
+done
+[ -n "$backoff" ] || fail "no backoff appeared in the logs during the outage"
+echo "    backoff observed, app still running"
+
+echo "==> restoring Postgres"
+docker compose start postgres
+
+echo "==> the consumer must recover and keep consuming"
+after=0
+for _ in $(seq 1 60); do
+    after=$(psql_one "SELECT count(*) FROM accounts" 2>/dev/null || echo 0)
+    [ "${after:-0}" -gt "$before" ] && break
+    sleep "$SLEEP"
+done
+[ "${after:-0}" -gt "$before" ] || fail "consumer did not resume (before=$before after=$after)"
+echo "    consumed $after accounts after recovery"
+
+echo "==> nothing valid was dead-lettered, and no account was applied twice"
+dlq=$(dlq_depth)
+[ "${dlq:-0}" -eq 0 ] || fail "$dlq messages reached the dead-letter queue during the outage"
+[ "$(psql_one 'SELECT count(*) = count(DISTINCT id) FROM accounts')" = "t" ] || fail "duplicate account ids found"
+
+echo "==> chaos check passed"

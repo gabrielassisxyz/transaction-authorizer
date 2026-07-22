@@ -80,8 +80,9 @@ ou valor fora da faixa é 422, todos como `application/problem+json`. Contrato c
 ## Verificação
 
 ```bash
-bin/ci   # formato, lint, testes e cobertura, o mesmo gate do CI
-bin/e2e  # smoke de ponta a ponta sobre o sistema conteinerizado (Docker, curl e jq)
+bin/ci    # formato, lint, testes e cobertura, o mesmo gate do CI
+bin/e2e   # smoke de ponta a ponta sobre o sistema conteinerizado (Docker, curl e jq)
+bin/chaos # derruba o Postgres no meio do consumo e prova a resiliência (Docker e curl)
 ```
 
 `bin/e2e` sobe o sistema inteiro com o profile `app`, espera a semente e a readiness,
