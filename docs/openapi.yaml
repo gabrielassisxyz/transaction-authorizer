@@ -1,0 +1,134 @@
+openapi: 3.1.0
+info:
+  title: Transaction Authorizer
+  version: 0.1.0
+  description: >
+    Autoriza transações de crédito e débito contra o saldo de uma conta, com a invariante
+    de saldo nunca negativo e idempotência por identificador de transação. O esquema de
+    requisição abaixo é uma suposição derivada do corpo de resposta exigido, não de um
+    contrato externo publicado: o valor trafega como decimal com moeda, e a resposta o
+    devolve no mesmo formato. Detalhes de decisão em docs/adr (002, 004, 006).
+servers:
+  - url: http://localhost:8080
+paths:
+  /transactions/{transactionId}:
+    post:
+      summary: Autoriza uma transação de crédito ou débito
+      description: >
+        Aprovação e recusa retornam ambas 200: a recusa é um resultado de domínio, não um
+        erro de transporte (ADR-006). O mesmo transactionId reenviado devolve a decisão
+        original sem mover o saldo de novo (ADR-004).
+      operationId: authorizeTransaction
+      parameters:
+        - name: transactionId
+          in: path
+          required: true
+          description: Identificador da transação, gerado pelo cliente. Idempotente.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthorizeTransactionRequest'
+      responses:
+        '200':
+          description: >
+            Decisão tomada e registrada. transaction.status é SUCCEEDED quando aprovada e
+            FAILED quando recusada por fundo insuficiente, conta desabilitada ou overflow.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizeTransactionResponse'
+        '400':
+          description: >
+            Requisição malformada: JSON inválido, campo ausente, transactionId que não é
+            UUID, valor com mais de duas casas decimais ou valor não positivo.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: A conta informada não existe.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: >
+            Requisição bem formada mas não processável: moeda diferente de BRL ou valor
+            fora da faixa representável do livro-razão.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+components:
+  schemas:
+    AuthorizeTransactionRequest:
+      type: object
+      required: [account_id, type, amount]
+      properties:
+        account_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [CREDIT, DEBIT]
+        amount:
+          $ref: '#/components/schemas/Money'
+    AuthorizeTransactionResponse:
+      type: object
+      required: [transaction, account]
+      properties:
+        transaction:
+          type: object
+          required: [id, type, amount, status, timestamp]
+          properties:
+            id:
+              type: string
+              format: uuid
+            type:
+              type: string
+              enum: [CREDIT, DEBIT]
+            amount:
+              $ref: '#/components/schemas/Money'
+            status:
+              type: string
+              enum: [SUCCEEDED, FAILED]
+            timestamp:
+              type: string
+              format: date-time
+        account:
+          type: object
+          required: [id, balance]
+          properties:
+            id:
+              type: string
+              format: uuid
+            balance:
+              $ref: '#/components/schemas/Money'
+    Money:
+      type: object
+      required: [value, currency]
+      properties:
+        value:
+          type: number
+          description: Decimal com no máximo duas casas significativas, sempre positivo.
+          example: 10.50
+        currency:
+          type: string
+          enum: [BRL]
+    Problem:
+      type: object
+      description: Corpo de erro conforme RFC 9457.
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
