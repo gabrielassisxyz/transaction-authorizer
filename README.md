@@ -4,6 +4,37 @@ API de autorização de transações financeiras: consome eventos de abertura de
 uma fila AWS SQS e autoriza operações de crédito e débito sobre o saldo, com a
 invariante de que um débito nunca deixa o saldo negativo.
 
+## Arquitetura
+
+Arquitetura hexagonal num único módulo Gradle. O núcleo (`domain`, `application`) não
+conhece Spring nem SQS nem JDBC; os adaptadores dependem para dentro, e a suíte ArchUnit
+falha o build se essa direção for violada. As duas vias de entrada, o consumo da fila e a
+autorização HTTP, atravessam a mesma aplicação até o Postgres.
+
+```mermaid
+flowchart LR
+    client[Cliente HTTP] --> web[adapter/inbound/web]
+    queue[SQS] --> consumer[adapter/inbound/sqs]
+
+    subgraph core[Núcleo, sem dependência de framework]
+        app[application]
+        domain[domain]
+        app --> domain
+    end
+
+    web --> app
+    consumer --> app
+    app --> port[application/port]
+    persistence[adapter/outbound/persistence] -. implementa .-> port
+    persistence --> pg[(Postgres)]
+```
+
+A seta cheia é dependência de compilação, sempre apontando para o núcleo; o adaptador de
+persistência implementa uma porta declarada na `application`, então a `application` depende
+da abstração, não do JDBC. A invariante de saldo nunca-negativo não vive em Kotlin: mora
+num update condicional atômico no adaptador de persistência, onde dois débitos concorrentes
+não conseguem ambos passar. Decisões e trade-offs em `docs/adr/`.
+
 ## Execução local
 
 Pré-requisitos: Docker e JDK 21. A versão 21 é o LTS alinhado ao que roda em
@@ -17,7 +48,7 @@ docker compose up -d
 # 2. Aguarda a mensagem "message-generator exited with code 0" nos logs
 docker compose logs -f message-generator
 
-# 3. Roda a aplicação — ela consome a fila e cria as contas
+# 3. Roda a aplicação; ela consome a fila e cria as contas
 ./gradlew bootRun
 ```
 
@@ -77,6 +108,10 @@ um erro. Requisição malformada é 400, conta inexistente é 404, e moeda difer
 ou valor fora da faixa é 422, todos como `application/problem+json`. Contrato completo em
 `docs/openapi.yaml`.
 
+Para exercer cada um desses comportamentos sem montar requisição à mão, `docs/http/` traz
+a coleção de primeiro contato em dois formatos, um `.http` nativo de IDE e uma coleção
+Postman, com a nota de como obter um `account_id` semeado.
+
 ## Verificação
 
 ```bash
@@ -91,8 +126,24 @@ credita e debita uma conta semeada, confere a recusa por saldo, o replay idempot
 rodado localmente antes de uma entrega. Não integra o `bin/ci` porque sobe containers e a
 semente de 100 mil mensagens.
 
+## Referências e onde elas aparecem no código
+
+As referências que embasam o desenho e o artefato concreto onde cada uma se materializa:
+
+| Referência | Onde se materializa |
+|---|---|
+| DDIA, CAP: postura CP sob concorrência | ADR-002, o update condicional atômico do saldo |
+| Arquitetura hexagonal | estrutura de pacotes com a direção fixada pela suíte ArchUnit |
+| 12-Factor, SRE | configuração por ambiente, logs JSON no stdout, o par SLI/SLO em `docs/deploy.md` |
+| Padrões de resiliência | full jitter no consumer, dead-letter queue e idempotência, detalhados em `docs/failure-modes.md` |
+| Pirâmide de testes | unitários no domínio, integração com Testcontainers, E2E sobre o compose, uma suíte ArchUnit |
+| OpenAPI, ADR | `docs/openapi.yaml` e `docs/adr/`, escritos junto da mudança que documentam |
+
 ## Documentação
 
 - `ROADMAP.md`: direção do projeto.
 - `docs/openapi.yaml`: contrato HTTP da autorização.
+- `docs/http/`: coleção de requisições, formato `.http` e Postman.
 - `docs/adr/`: decisões de arquitetura com motivadores e trade-offs.
+- `docs/failure-modes.md`: por componente, o que acontece quando ele falha.
+- `docs/deploy.md`: topologia de deploy em cloud pública e proposta de pipeline.
