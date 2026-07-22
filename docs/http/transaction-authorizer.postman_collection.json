@@ -1,0 +1,95 @@
+{
+  "info": {
+    "name": "Transaction Authorizer",
+    "description": "Coleção de primeiro contato da autorização de transações. Ajuste a variável accountId para uma conta semeada antes de disparar; o passo a passo para obter um id e para desabilitar uma conta está em docs/http/README.md. Os cenários seguem a ordem de um saldo que começa em zero: o crédito o levanta, o débito o consome, a recusa o preserva.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "accountId", "value": "00000000-0000-0000-0000-000000000000" },
+    { "key": "creditId", "value": "11111111-1111-1111-1111-111111111111" },
+    { "key": "debitId", "value": "22222222-2222-2222-2222-222222222222" }
+  ],
+  "item": [
+    {
+      "name": "Crédito aprovado",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/transactions/{{creditId}}", "host": ["{{baseUrl}}"], "path": ["transactions", "{{creditId}}"] },
+        "body": { "mode": "raw", "raw": "{ \"account_id\": \"{{accountId}}\", \"type\": \"CREDIT\", \"amount\": { \"value\": 100.00, \"currency\": \"BRL\" } }" },
+        "description": "Leva o saldo de 0 para 100,00. Retorna 200 com transaction.status SUCCEEDED."
+      }
+    },
+    {
+      "name": "Débito aprovado",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/transactions/{{debitId}}", "host": ["{{baseUrl}}"], "path": ["transactions", "{{debitId}}"] },
+        "body": { "mode": "raw", "raw": "{ \"account_id\": \"{{accountId}}\", \"type\": \"DEBIT\", \"amount\": { \"value\": 30.00, \"currency\": \"BRL\" } }" },
+        "description": "Deixa o saldo em 70,00. Retorna 200 com status SUCCEEDED."
+      }
+    },
+    {
+      "name": "Débito recusado por fundo insuficiente",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/transactions/33333333-3333-3333-3333-333333333333", "host": ["{{baseUrl}}"], "path": ["transactions", "33333333-3333-3333-3333-333333333333"] },
+        "body": { "mode": "raw", "raw": "{ \"account_id\": \"{{accountId}}\", \"type\": \"DEBIT\", \"amount\": { \"value\": 1000000.00, \"currency\": \"BRL\" } }" },
+        "description": "Recusa é decisão de domínio: 200 com status FAILED e saldo intacto."
+      }
+    },
+    {
+      "name": "Débito recusado por conta desabilitada",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/transactions/44444444-4444-4444-4444-444444444444", "host": ["{{baseUrl}}"], "path": ["transactions", "44444444-4444-4444-4444-444444444444"] },
+        "body": { "mode": "raw", "raw": "{ \"account_id\": \"{{accountId}}\", \"type\": \"DEBIT\", \"amount\": { \"value\": 1.00, \"currency\": \"BRL\" } }" },
+        "description": "Toda conta semeada nasce ENABLED. Desabilite uma conta antes de disparar (ver docs/http/README.md) e aponte accountId para ela. Retorna 200 com status FAILED."
+      }
+    },
+    {
+      "name": "Conta inexistente, 404",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/transactions/55555555-5555-5555-5555-555555555555", "host": ["{{baseUrl}}"], "path": ["transactions", "55555555-5555-5555-5555-555555555555"] },
+        "body": { "mode": "raw", "raw": "{ \"account_id\": \"99999999-9999-9999-9999-999999999999\", \"type\": \"DEBIT\", \"amount\": { \"value\": 1.00, \"currency\": \"BRL\" } }" },
+        "description": "Conta que não existe: 404 application/problem+json."
+      }
+    },
+    {
+      "name": "Requisição malformada, 400",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/transactions/66666666-6666-6666-6666-666666666666", "host": ["{{baseUrl}}"], "path": ["transactions", "66666666-6666-6666-6666-666666666666"] },
+        "body": { "mode": "raw", "raw": "{ \"account_id\": \"{{accountId}}\", \"type\": \"DEBIT\", \"amount\": { \"value\": 10.555, \"currency\": \"BRL\" } }" },
+        "description": "Valor com mais de duas casas decimais: 400 application/problem+json."
+      }
+    },
+    {
+      "name": "Moeda não suportada, 422",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/transactions/77777777-7777-7777-7777-777777777777", "host": ["{{baseUrl}}"], "path": ["transactions", "77777777-7777-7777-7777-777777777777"] },
+        "body": { "mode": "raw", "raw": "{ \"account_id\": \"{{accountId}}\", \"type\": \"CREDIT\", \"amount\": { \"value\": 10.00, \"currency\": \"USD\" } }" },
+        "description": "Bem formada mas não processável: moeda diferente de BRL, 422 application/problem+json."
+      }
+    },
+    {
+      "name": "Replay idempotente",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/transactions/{{creditId}}", "host": ["{{baseUrl}}"], "path": ["transactions", "{{creditId}}"] },
+        "body": { "mode": "raw", "raw": "{ \"account_id\": \"{{accountId}}\", \"type\": \"CREDIT\", \"amount\": { \"value\": 100.00, \"currency\": \"BRL\" } }" },
+        "description": "Reenvia o id do crédito aprovado e recebe a decisão original, sem mover o saldo de novo."
+      }
+    }
+  ]
+}
