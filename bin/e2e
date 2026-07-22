@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# bin/e2e: end-to-end smoke over the REAL composed system, no Testcontainers, the actual
+# docker compose plus the app image. This is the path a stranger takes from the README, so
+# it rots loudly the day that workflow breaks. Needs only Docker, curl and jq.
+#
+# Steps: bring the system up (building the app image) -> wait for the seed and app readiness
+# -> assert accounts landed -> pick a seeded account -> credit, debit, debit-beyond-balance
+# (refused, balance untouched) -> replay one id (identical stored decision) -> 404 on a
+# random account -> teardown.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+APP="${APP_BASE_URL:-http://localhost:8080}"
+READY_RETRIES=60
+SEED_RETRIES=60
+SLEEP=5
+
+cleanup() { docker compose --profile app down -v >/dev/null 2>&1 || true; }
+trap cleanup EXIT
+
+fail() {
+    echo "FAIL: $*" >&2
+    exit 1
+}
+
+psql_one() {
+    docker compose exec -T postgres \
+        psql -U authorizer -d transaction_authorizer -tAc "$1"
+}
+
+post_transaction() {
+    curl -sS -o "$2" -w '%{http_code}' -X POST "$APP/transactions/$1" \
+        -H 'Content-Type: application/json' -d "$3"
+}
+
+echo "==> bringing the system up from scratch (builds the app image on first run)"
+docker compose --profile app down -v >/dev/null 2>&1 || true
+docker compose --profile app up -d --build
+
+echo "==> waiting for app readiness (the app starts only after the seed completes)"
+ready=""
+for _ in $(seq 1 "$READY_RETRIES"); do
+    if curl -fsS "$APP/actuator/health/readiness" 2>/dev/null | grep -q '"status":"UP"'; then
+        ready=1
+        break
+    fi
+    sleep "$SLEEP"
+done
+[ -n "$ready" ] || fail "app never reported readiness UP"
+
+echo "==> waiting for consumed accounts to land"
+count=0
+for _ in $(seq 1 "$SEED_RETRIES"); do
+    count=$(psql_one "SELECT count(*) FROM accounts")
+    [ "${count:-0}" -gt 0 ] && break
+    sleep "$SLEEP"
+done
+[ "${count:-0}" -gt 0 ] || fail "no accounts were consumed into the database"
+echo "    accounts so far: $count"
+
+account=$(psql_one "SELECT id FROM accounts LIMIT 1")
+[ -n "$account" ] || fail "could not pick a seeded account"
+echo "    using account $account"
+
+body=$(mktemp)
+trap 'rm -f "$body"; cleanup' EXIT
+
+echo "==> credit 100.00 is approved and raises the balance"
+credit_id=$(uuidgen)
+credit_payload='{"account_id":"'"$account"'","type":"CREDIT","amount":{"value":100.00,"currency":"BRL"}}'
+code=$(post_transaction "$credit_id" "$body" "$credit_payload")
+[ "$code" = "200" ] || fail "credit returned HTTP $code"
+[ "$(jq -r '.transaction.status' "$body")" = "SUCCEEDED" ] || fail "credit was not SUCCEEDED"
+[ "$(jq -r '.account.balance.value' "$body")" = "100.00" ] || fail "credit did not raise the balance to 100.00"
+
+echo "==> debit 30.00 is approved"
+code=$(post_transaction "$(uuidgen)" "$body" \
+    '{"account_id":"'"$account"'","type":"DEBIT","amount":{"value":30.00,"currency":"BRL"}}')
+[ "$code" = "200" ] || fail "debit returned HTTP $code"
+[ "$(jq -r '.transaction.status' "$body")" = "SUCCEEDED" ] || fail "debit was not SUCCEEDED"
+[ "$(jq -r '.account.balance.value' "$body")" = "70.00" ] || fail "debit did not leave the balance at 70.00"
+
+echo "==> debit beyond the balance is refused and leaves the balance untouched"
+code=$(post_transaction "$(uuidgen)" "$body" \
+    '{"account_id":"'"$account"'","type":"DEBIT","amount":{"value":1000.00,"currency":"BRL"}}')
+[ "$code" = "200" ] || fail "over-debit returned HTTP $code"
+[ "$(jq -r '.transaction.status' "$body")" = "FAILED" ] || fail "over-debit was not FAILED"
+[ "$(jq -r '.account.balance.value' "$body")" = "70.00" ] || fail "over-debit moved the balance"
+
+echo "==> replaying the credit id returns the identical stored decision"
+code=$(post_transaction "$credit_id" "$body" "$credit_payload")
+[ "$code" = "200" ] || fail "replay returned HTTP $code"
+[ "$(jq -r '.transaction.status' "$body")" = "SUCCEEDED" ] || fail "replay was not SUCCEEDED"
+[ "$(jq -r '.account.balance.value' "$body")" = "100.00" ] || fail "replay did not return the stored balance"
+
+echo "==> a random account id is 404"
+code=$(post_transaction "$(uuidgen)" "$body" \
+    '{"account_id":"'"$(uuidgen)"'","type":"DEBIT","amount":{"value":1.00,"currency":"BRL"}}')
+[ "$code" = "404" ] || fail "unknown account returned HTTP $code, expected 404"
+
+echo "==> e2e smoke passed"

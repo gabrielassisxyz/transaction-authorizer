@@ -80,8 +80,15 @@ ou valor fora da faixa é 422, todos como `application/problem+json`. Contrato c
 ## Verificação
 
 ```bash
-bin/ci   # formato, lint, testes e cobertura — o mesmo gate do CI
+bin/ci   # formato, lint, testes e cobertura, o mesmo gate do CI
+bin/e2e  # smoke de ponta a ponta sobre o sistema conteinerizado (Docker, curl e jq)
 ```
+
+`bin/e2e` sobe o sistema inteiro com o profile `app`, espera a semente e a readiness,
+credita e debita uma conta semeada, confere a recusa por saldo, o replay idempotente e o
+404, e derruba tudo ao final. É o ensaio do primeiro contato de quem chega pelo README,
+rodado localmente antes de uma entrega. Não integra o `bin/ci` porque sobe containers e a
+semente de 100 mil mensagens.
 
 ## Documentação
 
