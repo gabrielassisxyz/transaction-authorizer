@@ -12,6 +12,8 @@ import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.TransactionStatus
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.transaction.support.TransactionTemplate
 import java.sql.Timestamp
 import java.time.Instant
@@ -67,7 +69,7 @@ class JdbcTransactionStore(
 
         val balanceAfter = guardedUpdate(command)
         if (balanceAfter != null) {
-            recordOutcome("approved", "applied")
+            recordOnCommit("approved", "applied")
             return AuthorizationResult.Approved(record(command, "SUCCEEDED", balanceAfter, ts), ts)
         }
         return resolveUnderLock(command, status, ts)
@@ -125,7 +127,7 @@ class JdbcTransactionStore(
                 .param("id", command.accountId)
                 .query(Long::class.java)
                 .single()
-        recordOutcome("approved", "applied")
+        recordOnCommit("approved", "applied")
         return AuthorizationResult.Approved(record(command, "SUCCEEDED", balanceAfter, ts), ts)
     }
 
@@ -137,7 +139,7 @@ class JdbcTransactionStore(
         reason: String,
     ): AuthorizationResult.Refused {
         log.info("transaction {} refused: {}", command.transactionId, reason)
-        recordOutcome("refused", reasonCode)
+        recordOnCommit("refused", reasonCode)
         return AuthorizationResult.Refused(record(command, "FAILED", balanceAfter, ts), ts)
     }
 
@@ -168,6 +170,18 @@ class JdbcTransactionStore(
         outcome: String,
         reason: String,
     ) = meterRegistry.counter("authorizations", "outcome", outcome, "reason", reason).increment()
+
+    // Outcome counters raised inside the write transaction ride an after-commit hook, so a
+    // transaction that rolls back after the guarded update leaves no phantom approval or refusal
+    // in the metric. The not-found and replay outcomes count directly, having no commit to await.
+    private fun recordOnCommit(
+        outcome: String,
+        reason: String,
+    ) = TransactionSynchronizationManager.registerSynchronization(
+        object : TransactionSynchronization {
+            override fun afterCommit() = recordOutcome(outcome, reason)
+        },
+    )
 
     private fun guardedUpdate(command: AuthorizationCommand): Long? =
         when (command.type) {

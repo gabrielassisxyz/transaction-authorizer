@@ -12,6 +12,8 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.support.TransactionTemplate
 import java.security.MessageDigest
 import java.sql.Timestamp
 import java.time.Instant
@@ -32,6 +34,25 @@ class AuthorizationMetricsTest : PostgresIntegrationTest() {
 
     @Autowired
     private lateinit var mockMvc: MockMvc
+
+    @Autowired
+    private lateinit var transactionManager: PlatformTransactionManager
+
+    @Test
+    fun `an authorization whose transaction rolls back leaves the outcome counter untouched`() {
+        val account = anAccount(balanceCents = 100)
+        val before = authorizations("approved", "applied")
+
+        // The store joins this surrounding transaction, so rolling it back undoes the approval
+        // the guarded update made. The counter must move with the commit, never before it.
+        TransactionTemplate(transactionManager).execute { status ->
+            debit(account, cents = 40)
+            status.setRollbackOnly()
+        }
+
+        assertThat(authorizations("approved", "applied")).isEqualTo(before)
+        assertThat(balanceOf(account)).isEqualTo(100)
+    }
 
     @Test
     fun `an applied debit increments authorizations approved,applied`() {
@@ -156,6 +177,13 @@ class AuthorizationMetricsTest : PostgresIntegrationTest() {
             .update()
         return id
     }
+
+    private fun balanceOf(accountId: UUID): Long =
+        jdbcClient
+            .sql("SELECT balance_cents FROM accounts WHERE id = :id")
+            .param("id", accountId)
+            .query(Long::class.java)
+            .single()
 
     private fun hashOf(
         accountId: UUID,
