@@ -82,8 +82,9 @@ class AccountCreatedConsumer(
     // dependency outage every remaining message would fail the same way, each paying a full
     // connection timeout, so failing fast and backing off is both quicker and gentler on the
     // recovering dependency. The undeleted messages simply redrive.
-    // Throwable, not Exception, on receive: the executor never replaces a thread that ended,
-    // so one `NoClassDefFoundError` would retire this poller while `isRunning` still says true.
+    // Throwable, not Exception, on both receive and handling: the executor never replaces a
+    // thread that ended, so an escaping `Error` such as `NoClassDefFoundError` would retire this
+    // poller while `isRunning` still says true. Catching it here backs the cycle off instead.
     @Suppress("TooGenericExceptionCaught")
     private fun pollCycle(): Boolean {
         val messages =
@@ -94,7 +95,13 @@ class AccountCreatedConsumer(
                 log.error("failed to receive from queue {}", properties.queueName, t)
                 return false
             }
-        return messages.all(::handle)
+        return try {
+            messages.all(::handle)
+        } catch (t: Throwable) {
+            meterRegistry.counter("sqs.messages", "outcome", "handle_failed").increment()
+            log.error("failed to handle a message from queue {}", properties.queueName, t)
+            false
+        }
     }
 
     private fun receive(): List<Message> {
