@@ -32,6 +32,12 @@ class SqsHealthIndicator(
             Health.up().withDetail("queue", properties.queueName).build()
         } catch (e: Exception) {
             reachable.set(0)
-            Health.down(e).withDetail("queue", properties.queueName).build()
+            // The class of the failure, not its message: the raw text can carry the endpoint or
+            // other internal context, and the health endpoint is not authenticated.
+            Health
+                .down()
+                .withDetail("queue", properties.queueName)
+                .withDetail("error", e.javaClass.simpleName)
+                .build()
         }
 }

@@ -31,12 +31,16 @@ class SqsHealthIndicatorTest {
     @Test
     fun `reports down and drives the gauge to zero when the queue is unreachable`() {
         every { sqsClient.getQueueUrl(any<GetQueueUrlRequest>()) } throws
-            QueueDoesNotExistException.builder().message("nope").build()
+            QueueDoesNotExistException.builder().message("secret-endpoint-detail").build()
 
         val health = indicator.health()
 
         assertThat(health.status).isEqualTo(Status.DOWN)
         assertThat(connectivityGauge()).isEqualTo(0.0)
+        // Only the class of the failure is exposed, never its message, which can carry the
+        // endpoint or other internal context to an unauthenticated caller.
+        assertThat(health.details).containsEntry("error", "QueueDoesNotExistException")
+        assertThat(health.details.values).noneMatch { it.toString().contains("secret-endpoint-detail") }
     }
 
     private fun connectivityGauge(): Double = meterRegistry.get("sqs.connectivity").gauge().value()
