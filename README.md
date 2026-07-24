@@ -147,3 +147,4 @@ As referências que embasam o desenho e o artefato concreto onde cada uma se mat
 - `docs/adr/`: decisões de arquitetura com motivadores e trade-offs.
 - `docs/failure-modes.md`: por componente, o que acontece quando ele falha.
 - `docs/deploy.md`: topologia de deploy em cloud pública e proposta de pipeline.
+- `docs/load/`: prova de carga com k6, método, cenários e resultados.

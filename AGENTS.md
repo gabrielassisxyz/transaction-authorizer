@@ -142,6 +142,10 @@ config, commit messages, PR titles and bodies.
   `management.prometheus.metrics.export.enabled=true` is set, even with the registry on
   the classpath and the endpoint exposed. The condition report names it
   `management.defaults.metrics.export.enabled is considered false`.
+- k6 `open()` resolves a relative path against the directory of the script that calls it,
+  not the process working directory. The load scenarios read the account sample through
+  `lib/config.js`, so its default reaches up with `../accounts.json` to land in the scripts
+  directory where `extract-accounts.sh` writes it.
 - Append a line here on every gotcha discovered.
 
 <!-- BEGIN universal-principles v3 -->
