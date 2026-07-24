@@ -43,6 +43,11 @@ pico inteira, que mistura os dois regimes de propósito: isolar só a janela de 
 a saída time-series do k6, e a curva de fila do pool logo abaixo já mostra a absorção e a
 recuperação do surto com mais clareza do que um percentil agregado mostraria.
 
+Pelo mesmo motivo a tabela não traz o p50 que os outros cenários reportam: uma mediana sobre
+uma corrida que mistura base calma e surto de propósito cai dentro da base, que é justamente
+a parte que o cenário não existe para medir. O p99 e a máxima ficam no lugar dela, porque é
+na cauda que o surto aparece.
+
 | Corrida | Base VUs | Pico VUs | Throughput (req/s) | p99 (ms) | Máx (ms) | Taxa de erro |
 |---|---|---|---|---|---|---|
 | 1 | 20 | 200 | 2458 | 326 | 1331 | 0% |
@@ -81,8 +86,9 @@ invariante do sistema aparecendo na medição.
 ![Saturação do pool HikariCP sob regime](results/hikari-saturation.png)
 
 Corrida de regime, 50 VUs contra um pool de 20. As conexões ativas sobem e grudam no teto
-de 20, e a fila (`pending`) se estabiliza em torno de 27, com pico de 31: o excedente de VUs
-que não cabe no pool espera. É a evidência do teto projetado. Sob virtual threads o gargalo
+de 20, e a fila (`pending`) se estabiliza em torno de 30, com pico de 31: o excedente de VUs
+que não cabe no pool espera, e 50 VUs menos as 20 conexões do pool são exatamente as 30 que
+esperam. É a evidência do teto projetado. Sob virtual threads o gargalo
 de concorrência é o pool de conexões, não uma contagem de threads, então cada requisição
 que precisa do banco pega uma conexão e as demais enfileiram. Fonte de dados em
 `hikari.csv`, coletado por `scripts/scrape-hikari.sh`.
@@ -92,7 +98,8 @@ O disco não é o teto escondido atrás do pool. Durante o regime o Postgres esc
 no p95, e a profundidade de fila do dispositivo acompanhou a fila do pool. O `%util` do
 disco fica perto de 100%, mas em SSD isso indica só que havia I/O em voo, não saturação; a
 latência de escrita, que dispararia se o disco fosse a parede, permaneceu baixa. O teto
-medido é o pool.
+medido é o pool. Fonte de dados em `iostat.csv`, coletado por `scripts/scrape-iostat.sh` na
+mesma janela do gráfico acima: a média e o p95 são sobre as amostras de um segundo.
 
 ## Tuning medido
 
