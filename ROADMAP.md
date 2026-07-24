@@ -22,12 +22,14 @@ Direção do projeto: o que existe, o que vem a seguir e o que fica fora de esco
   banco e fila, imagem conteinerizada e smoke de ponta a ponta.
 - **Narrativa de operação:** OpenAPI e coleção de requisições, `docs/failure-modes.md`
   por componente, diagrama de deploy em cloud pública e proposta de pipeline canário.
+- **Prova de carga:** campanha k6 com gerador e SUT em máquinas isoladas, três corridas
+  por cenário. Regime, pico e concentração em conta quente medidos em `docs/load/`, com a
+  curva de saturação do pool e o tamanho do pool confirmado por varredura.
 
 ## Próximos passos
 
-1. **Prova de carga.** O harness k6, o método e os caveats estão em `docs/load/`, com
-   cenários de regime, pico e concentração em conta quente. Falta a execução no par de
-   máquinas isoladas, que preenche throughput, p99 e a curva de saturação do pool.
+1. **Revisão sênior às cegas.** Um par de olhos que não escreveu o código percorre o
+   repositório a partir de um clone limpo e aplica a janela de correção que apontar.
 
 ## Com mais tempo
 
