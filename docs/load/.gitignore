@@ -1,6 +1,7 @@
-# Run artifacts, produced on the SUT during a campaign and never committed: the extracted
-# account sample carries real seeded ids, and the CSV and JSON summaries are per-run output.
-# The curated numbers and the saturation graph live in results.md, which is committed.
+# Working files a run leaves in scripts/, which is where the tools write by default. The
+# account sample stays out for good: it carries real seeded ids and one command regenerates
+# it. The CSVs and per-run JSON here are scratch, because the campaign record meant to
+# survive lives curated under results/ and is committed alongside the numbers it backs.
 scripts/accounts.json
 scripts/*.csv
 scripts/*-run*.json

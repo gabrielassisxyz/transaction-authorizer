@@ -9,6 +9,15 @@ conta quente responderam todas HTTP 200, incluindo os débitos recusados por sal
 decisão de autorização e não falha. As três corridas por cenário mostram a faixa, não um
 recorte favorável.
 
+As tabelas abaixo são derivadas, não a fonte. Os artefatos que as produzem estão em
+[results/](results/) e permitem refazer qualquer linha sem religar as máquinas:
+
+| Artefato | O que é |
+|---|---|
+| `results/k6/*.json` | O sumário do k6 de cada uma das doze corridas, uma por linha de tabela, incluindo as três da varredura de pool |
+| `results/hikari-campaign.csv` | Os gauges do pool por segundo, com epoch, cobrindo regime, pico e conta quente |
+| `results/manifest.csv` | Início, fim e código de saída de cada corrida, que é o que permite recortar o CSV na janela de qualquer cenário |
+
 ## Máquinas
 
 | Papel | Tipo de instância | vCPU | Memória | Zona |
@@ -91,7 +100,7 @@ que não cabe no pool espera, e 50 VUs menos as 20 conexões do pool são exatam
 esperam. É a evidência do teto projetado. Sob virtual threads o gargalo
 de concorrência é o pool de conexões, não uma contagem de threads, então cada requisição
 que precisa do banco pega uma conexão e as demais enfileiram. Fonte de dados em
-`hikari.csv`, coletado por `scripts/scrape-hikari.sh`.
+`results/hikari-campaign.csv`, coletado por `scripts/scrape-hikari.sh`.
 
 O disco não é o teto escondido atrás do pool. Um `iostat -x 1` acompanhou a campanha, e
 sobre as suas 2.779 amostras de um segundo o Postgres escreveu no gp3 a ~2,5 mil operações
@@ -108,6 +117,12 @@ não na média, e por isso nada aqui afirma correlação entre a fila do disposi
 que exigiria alinhar as duas séries no tempo. `scripts/scrape-iostat.sh` existe para a
 próxima campanha: ele carimba epoch por amostra e descarta a média desde o boot, então uma
 corrida futura fica recortável à janela de um cenário, o que esta não é.
+
+É também o único dado bruto da campanha que não está publicado em [results/](results/), e a
+falta de carimbo é o motivo: sem epoch por amostra o arquivo não pode ser alinhado às
+janelas do `manifest.csv`, então publicá-lo ofereceria volume sem oferecer verificação. Uma
+tentativa de ancorá-lo por correlação contra a série do pool, que tem epoch, não passou:
+r = 0,08, indistinguível de ruído.
 
 ## Tuning medido
 
