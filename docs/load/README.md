@@ -129,3 +129,20 @@ Ele grava `hikari.csv` com `active`, `idle`, `pending` e `max` por segundo. O gr
 `active` contra `max`, com `pending` subindo quando o pool enche, é a evidência do teto
 sendo alcançado. O CSV e o PNG do gráfico ficam junto dos resultados em
 [results.md](results.md).
+
+## Medição de disco
+
+Um pool saturado e um disco saturado produzem a mesma curva de fila, então afirmar que o
+teto é o pool exige medir o armazenamento na mesma corrida em vez de deduzi-lo. Na mesma
+janela do regime, amostre o disco do SUT:
+
+```sh
+cd docs/load/scripts
+DEV=nvme0n1 ./scrape-iostat.sh
+```
+
+Ele grava `iostat.csv` com escritas por segundo, latência de escrita, profundidade de fila
+e `%util`, uma linha por segundo. `DEV` aponta para o dispositivo raiz do SUT, e `INTERVAL`
+muda o passo da amostragem. A latência de escrita é o número que decide: se ela permanece
+baixa enquanto a fila do pool cresce, o disco não é a parede. O `%util` sozinho não decide
+nada em SSD, onde ele indica apenas que havia I/O em voo.

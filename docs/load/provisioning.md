@@ -14,7 +14,13 @@ números de loopback não valem e correr atrás de uma segunda máquina.
 | Papel | Instala | Grupo de segurança |
 |---|---|---|
 | Gerador | binário k6 | saída para a porta HTTP do SUT; SSH de entrada |
-| SUT | Docker e a stack do compose | entrada na porta HTTP a partir do gerador; SSH |
+| SUT | Docker, a stack do compose, `postgresql-client` e `sysstat` | entrada na porta HTTP a partir do gerador; SSH |
+
+O `postgresql-client` não é opcional: `extract-accounts.sh` fala com o Postgres por `psql`,
+e sem ele a extração falha depois de a semente já ter drenado, que é o pior momento para
+descobrir uma dependência. O `sysstat` traz o `iostat`, que mede o disco durante a corrida
+de regime; sem essa medição não há como afirmar que o teto observado é o pool e não o
+armazenamento.
 
 Mesma zona de disponibilidade, para que a latência de rede seja a de um salto real e não a
 de uma travessia entre regiões. Os grupos de segurança abrem só o par mais SSH: nada de
