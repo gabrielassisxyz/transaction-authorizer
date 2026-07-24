@@ -93,13 +93,21 @@ de concorrência é o pool de conexões, não uma contagem de threads, então ca
 que precisa do banco pega uma conexão e as demais enfileiram. Fonte de dados em
 `hikari.csv`, coletado por `scripts/scrape-hikari.sh`.
 
-O disco não é o teto escondido atrás do pool. Durante o regime o Postgres escreveu no gp3 a
-~2,5 mil operações por segundo, mas a latência de escrita ficou em 3,7 ms de média e 8,6 ms
-no p95, e a profundidade de fila do dispositivo acompanhou a fila do pool. O `%util` do
-disco fica perto de 100%, mas em SSD isso indica só que havia I/O em voo, não saturação; a
-latência de escrita, que dispararia se o disco fosse a parede, permaneceu baixa. O teto
-medido é o pool. Fonte de dados em `iostat.csv`, coletado por `scripts/scrape-iostat.sh` na
-mesma janela do gráfico acima: a média e o p95 são sobre as amostras de um segundo.
+O disco não é o teto escondido atrás do pool. Um `iostat -x 1` acompanhou a campanha, e
+sobre as suas 2.779 amostras de um segundo o Postgres escreveu no gp3 a ~2,5 mil operações
+por segundo, com latência de escrita de 3,7 ms de média, 8,6 ms no p95 e 31 ms no pior
+segundo. O `%util` do disco fica perto de 100%, mas em SSD isso indica só que havia I/O em
+voo, não saturação; a latência de escrita, que dispararia se o disco fosse a parede, não
+passou de dezenas de milissegundos nem no pior segundo. O teto medido é o pool.
+
+A janela desses números é a campanha inteira, não o recorte do gráfico acima. O `iostat -x 1`
+não carimba epoch por linha, então a saída bruta não tem como ser reduzida a um cenário: ela
+mistura os três cenários, a varredura de pool e os intervalos ociosos entre corridas, e a
+ociosidade puxa a média para baixo. Por isso a leitura se apoia no p95 e no pior segundo, e
+não na média, e por isso nada aqui afirma correlação entre a fila do dispositivo e a do pool,
+que exigiria alinhar as duas séries no tempo. `scripts/scrape-iostat.sh` existe para a
+próxima campanha: ele carimba epoch por amostra e descarta a média desde o boot, então uma
+corrida futura fica recortável à janela de um cenário, o que esta não é.
 
 ## Tuning medido
 
