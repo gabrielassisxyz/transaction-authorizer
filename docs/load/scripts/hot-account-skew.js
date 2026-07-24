@@ -1,4 +1,5 @@
 import { authorize, pickHot } from './lib/transactions.js';
+import { TREND_STATS } from './lib/config.js';
 
 // Hot-account skew: the same steady concurrency, but traffic concentrated on a handful of
 // accounts instead of spread across the sample. Every request to a hot account contends for
@@ -6,6 +7,7 @@ import { authorize, pickHot } from './lib/transactions.js';
 // on the row lock. It exists to show that contention honestly, in numbers, rather than hide
 // it behind uniform load that almost never touches the same row twice.
 export const options = {
+  summaryTrendStats: TREND_STATS,
   scenarios: {
     hot_account_skew: {
       executor: 'ramping-vus',

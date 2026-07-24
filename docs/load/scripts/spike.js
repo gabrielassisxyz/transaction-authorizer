@@ -1,10 +1,12 @@
 import { authorize, pickUniform } from './lib/transactions.js';
+import { TREND_STATS } from './lib/config.js';
 
 // Spike: a calm baseline, then a sudden jump to a burst well above it, then back down. It
 // shows how the service absorbs a surge, whether latency recovers once the burst passes,
 // and whether errors appear only at the peak or linger after it. Its percentiles are read
 // apart from the steady-state ones, since a spike deliberately mixes two regimes.
 export const options = {
+  summaryTrendStats: TREND_STATS,
   scenarios: {
     spike: {
       executor: 'ramping-vus',

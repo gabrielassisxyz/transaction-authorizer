@@ -1,4 +1,5 @@
 import { authorize, pickUniform } from './lib/transactions.js';
+import { TREND_STATS } from './lib/config.js';
 
 // Steady state: a fixed concurrency held long enough for throughput and latency to settle.
 // This is the headline run, the one whose throughput and p50/p99 go in the results table.
@@ -6,6 +7,7 @@ import { authorize, pickUniform } from './lib/transactions.js';
 // read. Under virtual threads the connection pool, not a thread count, is the concurrency
 // ceiling, so raising VUS past the pool size is what surfaces the queue behind it.
 export const options = {
+  summaryTrendStats: TREND_STATS,
   scenarios: {
     steady: {
       executor: 'ramping-vus',

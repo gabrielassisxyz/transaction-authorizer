@@ -14,3 +14,8 @@ const ACCOUNTS_FILE = __ENV.ACCOUNTS_FILE || '../accounts.json';
 export const accounts = new SharedArray('accounts', function () {
   return JSON.parse(open(ACCOUNTS_FILE));
 });
+
+// The end-of-test summary omits p99 by default, exporting only p90 and p95. The results
+// doc reports p99 per scenario, so every measured run asks for it explicitly, in one place
+// so the three scenarios stay consistent.
+export const TREND_STATS = ['min', 'med', 'avg', 'p(90)', 'p(95)', 'p(99)', 'max'];
