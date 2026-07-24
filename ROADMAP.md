@@ -25,8 +25,9 @@ Direção do projeto: o que existe, o que vem a seguir e o que fica fora de esco
 
 ## Próximos passos
 
-1. **Prova de carga.** Cenário k6 com gerador e servidor em máquinas isoladas;
-   throughput e p99 documentados em `docs/load/`.
+1. **Prova de carga.** O harness k6, o método e os caveats estão em `docs/load/`, com
+   cenários de regime, pico e concentração em conta quente. Falta a execução no par de
+   máquinas isoladas, que preenche throughput, p99 e a curva de saturação do pool.
 
 ## Com mais tempo
 
