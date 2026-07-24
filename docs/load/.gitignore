@@ -1,0 +1,6 @@
+# Run artifacts, produced on the SUT during a campaign and never committed: the extracted
+# account sample carries real seeded ids, and the CSV and JSON summaries are per-run output.
+# The curated numbers and the saturation graph live in results.md, which is committed.
+scripts/accounts.json
+scripts/*.csv
+scripts/*-run*.json
