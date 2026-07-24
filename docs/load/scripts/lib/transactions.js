@@ -58,8 +58,14 @@ export function authorize(accountId) {
     type: randomType(),
     amount: { value: randomReais(), currency: 'BRL' },
   });
+  // The name tag collapses every request into one metric series. Without it k6 tags each
+  // sample with the URL, and since the transaction id is new on every call that means one
+  // time series per request: a three-minute run mints hundreds of thousands of them and
+  // the generator dies to the OOM killer near the end, after the load has already been
+  // applied and before any summary is written.
   const res = http.post(`${BASE_URL}/transactions/${uuidv4()}`, body, {
     headers: { 'Content-Type': 'application/json' },
+    tags: { name: 'POST /transactions/{transactionId}' },
   });
   check(res, {
     'status is 200': (r) => r.status === 200,
