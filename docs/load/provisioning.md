@@ -30,10 +30,26 @@ máquina na tabela de resultados antes da primeira corrida.
 O caminho medido é só HTTP, mas ele precisa de contas reais para acertar. A semente vem da
 própria stack do compose:
 
-1. No SUT, suba a stack com o app: `docker compose --profile app up -d --build`. O app
-   fica atrás do profile `app`, então sem ele a stack sobe Postgres, localstack e o gerador
-   mas nenhum consumer, e a semente ficaria parada na fila. Com o profile, sobe também o
-   autorizador conteinerizado, que é o proprio SUT da campanha.
+1. No SUT, suba a stack com o app:
+
+   ```sh
+   APP_BIND=0.0.0.0 docker compose --profile app up -d --build
+   ```
+
+   O app fica atrás do profile `app`, então sem ele a stack sobe Postgres, localstack e o
+   gerador mas nenhum consumer, e a semente ficaria parada na fila. Com o profile, sobe
+   também o autorizador conteinerizado, que é o próprio SUT da campanha.
+
+   `APP_BIND` é o que torna a campanha possível. O compose publica a porta em `127.0.0.1`
+   por padrão, para que uma máquina de desenvolvimento não coloque o autorizador na rede
+   local; com a porta em loopback, o gerador recebe conexão recusada mesmo com o grupo de
+   segurança correto, e o sintoma é indistinguível de app fora do ar. No SUT quem restringe
+   o alcance é o grupo de segurança, que abre a porta só para o gerador.
+
+   Os valores de tuning viajam pelo mesmo caminho: `DB_POOL_SIZE` e `SQS_POLLERS` são
+   repassados ao container e assumem os defaults da aplicação quando não declarados, então
+   uma varredura de pool é `DB_POOL_SIZE=40 docker compose --profile app up -d`, sem editar
+   arquivo nenhum entre corridas.
 2. Espere `message-generator exited with code 0` e o consumer do app drenar a fila. As
    contas passam a existir no Postgres do SUT.
 3. Durante as corridas o localstack fica ocioso: o tráfego medido não toca a fila. Isso
@@ -56,6 +72,8 @@ Estas máquinas já foram esquecidas ligadas uma vez; disciplina de custo. Ao fi
 - [ ] Instância do SUT terminada.
 - [ ] Volumes e IPs elásticos associados liberados, para não deixar cobrança órfã.
 - [ ] Grupos de segurança criados para a campanha removidos.
+- [ ] Chave de acesso da CLI usada na campanha apagada. Ela não expira sozinha, então
+      sobrevive à destruição das máquinas e continua valendo na conta inteira.
 
 A campanha termina quando as duas máquinas não existem mais, não quando a última corrida
 acaba.

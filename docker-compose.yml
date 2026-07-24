@@ -114,5 +114,14 @@ services:
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - SQS_QUEUE_NAME=conta-bancaria-criada
+      # The two values the load campaign sweeps. They carry the same defaults as the
+      # application, restated here because an unlisted variable is not passed into the
+      # container at all: without these lines the campaign could not vary the pool it
+      # exists to measure.
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-20}
+      - SQS_POLLERS=${SQS_POLLERS:-2}
     ports:
-      - "127.0.0.1:8080:8080"
+      # Loopback by default, so a development machine does not put the authorizer on its
+      # network. The load campaign runs the generator on a separate host and overrides
+      # APP_BIND to 0.0.0.0, where the security group is what restricts the reach.
+      - "${APP_BIND:-127.0.0.1}:8080:8080"
