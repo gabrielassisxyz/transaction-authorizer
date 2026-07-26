@@ -21,10 +21,6 @@ spring:
       # Under virtual threads the connection pool, not the thread pool, is the
       # concurrency limit, so it is sized explicitly instead of inherited.
       maximum-pool-size: ${DB_POOL_SIZE:20}
-  jpa:
-    open-in-view: false
-    hibernate:
-      ddl-auto: validate
   flyway:
     enabled: true
 

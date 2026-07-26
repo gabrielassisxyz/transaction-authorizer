@@ -24,10 +24,10 @@ past it, STOP and flag it.
 - Kotlin on Java 21, Spring Boot with **Spring MVC + virtual threads**
   (`spring.threads.virtual.enabled=true`). NOT WebFlux, NOT coroutines: one
   concurrency model only. Rationale in `docs/adr/`.
-- Persistence: JPA + PostgreSQL. Money is **integer cents** (BRL), never binary float.
-- JPA entities are regular `class`es, **never `data class`** (Hibernate identity vs
-  `equals`/`hashCode`/`copy` corruption). Transport DTOs stay separate from entities.
-  The `kotlin-jpa`/no-arg compiler plugins are required.
+- Persistence: `JdbcClient` + PostgreSQL, no ORM. Money is **integer cents** (BRL),
+  never binary float. Transport DTOs stay separate from persistence rows. The
+  concurrency-critical update is native SQL that JPQL cannot express, so no managed
+  entity is kept; rationale in `docs/adr/002-controle-de-concorrencia-do-saldo.md`.
 - Kotlin idiom elsewhere: sealed classes for authorization results, null-safety,
   collection operators.
 
@@ -168,9 +168,7 @@ config, commit messages, PR titles and bodies.
   uselessness. When your fresh measurement contradicts what the human vaguely remembers
   ("I changed this once, because of some problem"), **your measurement is the suspect first**
   — it may be measuring the case that *isn't* failing. Go find the original problem, then
-  decide. *(A CIFS share was benchmarked with a big sequential `dd`, looked fast, and the
-  local-disk download dir was "fixed" away — while the actual failure was random writes:
-  par2, unrar, torrent piece-writes. Two wrong commits.)*
+  decide.
 - **Goal-driven execution — define the success check, then loop to it.** Turn the task into
   something verifiable before coding: "add validation" → write tests for invalid inputs, then
   pass them; "fix the bug" → write a failing repro test, then pass it; "refactor X" → tests

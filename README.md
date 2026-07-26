@@ -37,9 +37,13 @@ não conseguem ambos passar. Decisões e trade-offs em `docs/adr/`.
 
 ## Execução local
 
-Pré-requisitos: Docker e JDK 21. A versão 21 é o LTS alinhado ao que roda em
-produção hoje, não uma versão presa por inércia: os recursos de que o serviço
-depende (virtual threads, entre outros) já são estáveis nela.
+Pré-requisitos: Docker, JDK 21 e acesso à internet (o passo 1 baixa certificados e
+módulos Go para gerar as mensagens de seed). A versão 21 é o LTS alinhado ao que roda
+em produção hoje, não uma versão presa por inércia: os recursos de que o serviço
+depende (virtual threads, entre outros) já são estáveis nela. O exemplo de `curl` mais
+abaixo usa `uuidgen` (pacote `util-linux` na maioria das distros). `bin/ci` só roda a
+varredura de segredos localmente se o `gitleaks` estiver instalado
+(`bin/install-hooks` cuida disso); sem ele esse gate específico existe só no CI.
 
 ```bash
 # 1. Sobe Postgres, localstack, a topologia de filas e o gerador de 100k mensagens
@@ -59,11 +63,17 @@ fila principal e a sua dead-letter queue com política de redrive, e o
 `message-generator`, que semeia as 100 mil mensagens e termina. A aplicação nunca cria
 filas: o que ela espera encontrar é criado por infraestrutura, aqui e em produção.
 
+Se as portas padrão (5432, 4566, 8080) já estiverem em uso na máquina, `POSTGRES_PORT`,
+`LOCALSTACK_PORT` e `APP_PORT` remapeiam o lado host do compose; `DB_URL`,
+`SQS_ENDPOINT` e `SERVER_PORT` apontam a aplicação para as mesmas portas escolhidas
+quando ela roda fora do compose (`./gradlew bootRun`).
+
 Toda a configuração tem padrão para execução local e é sobrescrevível por variável de
 ambiente: `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `DB_POOL_SIZE`, `SQS_ENDPOINT`,
-`SQS_QUEUE_NAME`, `SQS_POLLERS`, `AWS_REGION`, `AWS_ACCESS_KEY_ID` e
-`AWS_SECRET_ACCESS_KEY`. Em ambiente real, `SQS_ENDPOINT` fica vazio (o SDK resolve o
-endpoint da região) e as chaves também, e aí a credencial vem da role da instância.
+`SQS_QUEUE_NAME`, `SQS_POLLERS`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY` e `SERVER_PORT`. Em ambiente real, `SQS_ENDPOINT` fica vazio (o
+SDK resolve o endpoint da região) e as chaves também, e aí a credencial vem da role da
+instância.
 
 ## Execução conteinerizada
 
@@ -80,6 +90,11 @@ A imagem é multi-stage: build no JDK 21 e runtime num JRE slim, com o jar em ca
 para as dependências cacharem separadas do código, rodando como usuário sem privilégio.
 O serviço espera o `message-generator` terminar antes de subir, então na primeira
 execução já há mensagens para drenar.
+
+`docker compose --profile app up` e o fluxo do `bootRun` (seção anterior) semeiam a
+mesma base: rodar um depois do outro sem um `docker compose down -v` entre eles refaz o
+seed sobre um banco já semeado, dobrando as contas. `bin/e2e` e `bin/chaos` já cuidam
+disso e derrubam os volumes antes de subir.
 
 ## Observabilidade
 

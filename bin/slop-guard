@@ -4,14 +4,13 @@
 #   1. the em-dash (U+2014) worn as a prose habit, and
 #   2. the de-slopping tool named in committed text (a branch, commit, doc, or comment).
 #
-# Canonical source lives in llm-workflow (bin/slop-guard) and is copied byte-identical
-# into each public deliverable repo that opts in. llm-workflow does NOT run it on
-# itself: its own prose uses em-dashes and names the tool by design, so the gate lives
-# here only as the source, never in this repo's own bin/ci.
+# Canonical source lives in a private tooling repo and is copied byte-identical into
+# each public deliverable repo that opts in. The source repo does NOT run it on itself:
+# its own prose uses em-dashes and names the tool by design, so the gate lives here
+# only as a copy, never generated from this repo's own bin/ci.
 #
-# Why a gate and not only the review skill: a naming leak already shipped once, on a
-# delivery branch whose name showed on the repo home page, precisely the kind of thing a
-# human reviewing under a deadline misses. A grep decides it every time. The em-dash is
+# Why a gate and not only the review skill: this is precisely the kind of thing a human
+# reviewing under a deadline misses. A grep decides it every time. The em-dash is
 # the single most reliable machine-checkable tell once code fences and inline code
 # (where a dash is content, not prose) are removed. Everything softer stays judgment for
 # the de-slopify review skill; this file only carries what a grep can settle.
@@ -62,8 +61,8 @@ HATCH='allow-emdash'
 NAME_RE='de-?slop'   # de-slop / deslop / de-slopify, case-insensitive
 
 # Files whose content is installed from the drift contract, byte-identical, and whose
-# canonical source lives in llm-workflow. Listed by path because the target repo has no
-# copy of the manifest to read.
+# canonical source lives in a private tooling repo. Listed by path because the target
+# repo has no copy of the manifest to read.
 MANAGED='bin/slop-guard bin/worktree bin/install-hooks .githooks/pre-commit .githooks/commit-msg .gitignore .worktree-links'
 
 # Report every line that still holds an em-dash after fenced blocks (``` and ~~~, which

@@ -70,7 +70,7 @@ class JdbcTransactionStore(
         val balanceAfter = guardedUpdate(command)
         if (balanceAfter != null) {
             recordOnCommit("approved", "applied")
-            return AuthorizationResult.Approved(record(command, "SUCCEEDED", balanceAfter, ts), ts)
+            return approved(command, record(command, "SUCCEEDED", balanceAfter, ts), ts)
         }
         return resolveUnderLock(command, status, ts)
     }
@@ -128,7 +128,7 @@ class JdbcTransactionStore(
                 .query(Long::class.java)
                 .single()
         recordOnCommit("approved", "applied")
-        return AuthorizationResult.Approved(record(command, "SUCCEEDED", balanceAfter, ts), ts)
+        return approved(command, record(command, "SUCCEEDED", balanceAfter, ts), ts)
     }
 
     private fun refuse(
@@ -140,8 +140,20 @@ class JdbcTransactionStore(
     ): AuthorizationResult.Refused {
         log.info("transaction {} refused: {}", command.transactionId, reason)
         recordOnCommit("refused", reasonCode)
-        return AuthorizationResult.Refused(record(command, "FAILED", balanceAfter, ts), ts)
+        return refused(command, record(command, "FAILED", balanceAfter, ts), ts)
     }
+
+    private fun approved(
+        command: AuthorizationCommand,
+        balanceAfter: Money,
+        ts: Instant,
+    ) = AuthorizationResult.Approved(command.accountId, command.type, command.amount, balanceAfter, ts)
+
+    private fun refused(
+        command: AuthorizationCommand,
+        balanceAfter: Money,
+        ts: Instant,
+    ) = AuthorizationResult.Refused(command.accountId, command.type, command.amount, balanceAfter, ts)
 
     private fun reconcile(
         stored: StoredTransaction,
@@ -159,10 +171,10 @@ class JdbcTransactionStore(
         val balance = Money(stored.balanceAfter)
         return if (stored.result == "SUCCEEDED") {
             recordOutcome("approved", "replay")
-            AuthorizationResult.Approved(balance, stored.timestamp)
+            AuthorizationResult.Approved(stored.accountId, stored.type, stored.amount, balance, stored.timestamp)
         } else {
             recordOutcome("refused", "replay")
-            AuthorizationResult.Refused(balance, stored.timestamp)
+            AuthorizationResult.Refused(stored.accountId, stored.type, stored.amount, balance, stored.timestamp)
         }
     }
 
@@ -240,6 +252,9 @@ class JdbcTransactionStore(
             .param("id", transactionId)
             .query { rs, _ ->
                 StoredTransaction(
+                    rs.getObject("account_id", UUID::class.java),
+                    TransactionType.valueOf(rs.getString("type")),
+                    Money(rs.getLong("amount_cents")),
                     rs.getString("result"),
                     rs.getLong("balance_after"),
                     rs.getTimestamp("created_at").toInstant(),
@@ -254,6 +269,9 @@ class JdbcTransactionStore(
     )
 
     private data class StoredTransaction(
+        val accountId: UUID,
+        val type: TransactionType,
+        val amount: Money,
         val result: String,
         val balanceAfter: Long,
         val timestamp: Instant,
@@ -288,7 +306,8 @@ class JdbcTransactionStore(
         """
 
         const val SELECT_STORED = """
-            SELECT t.result, t.balance_after, t.created_at, c.request_hash
+            SELECT t.account_id, t.type, t.amount_cents, t.result, t.balance_after, t.created_at,
+                   c.request_hash
             FROM transactions t JOIN transaction_claims c ON c.id = t.id
             WHERE t.id = :id
         """
