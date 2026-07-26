@@ -24,10 +24,10 @@ past it, STOP and flag it.
 - Kotlin on Java 21, Spring Boot with **Spring MVC + virtual threads**
   (`spring.threads.virtual.enabled=true`). NOT WebFlux, NOT coroutines: one
   concurrency model only. Rationale in `docs/adr/`.
-- Persistence: JPA + PostgreSQL. Money is **integer cents** (BRL), never binary float.
-- JPA entities are regular `class`es, **never `data class`** (Hibernate identity vs
-  `equals`/`hashCode`/`copy` corruption). Transport DTOs stay separate from entities.
-  The `kotlin-jpa`/no-arg compiler plugins are required.
+- Persistence: `JdbcClient` + PostgreSQL, no ORM. Money is **integer cents** (BRL),
+  never binary float. Transport DTOs stay separate from persistence rows. The
+  concurrency-critical update is native SQL that JPQL cannot express, so no managed
+  entity is kept; rationale in `docs/adr/002-controle-de-concorrencia-do-saldo.md`.
 - Kotlin idiom elsewhere: sealed classes for authorization results, null-safety,
   collection operators.
 
