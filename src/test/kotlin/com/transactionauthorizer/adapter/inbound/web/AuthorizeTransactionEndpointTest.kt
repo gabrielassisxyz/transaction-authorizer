@@ -149,6 +149,7 @@ class AuthorizeTransactionEndpointTest : PostgresIntegrationTest() {
 
         assertThat(timestampOf(replay)).isEqualTo(timestampOf(first))
         assertThat(balanceValueOf(replay)).isEqualTo(balanceValueOf(first))
+        assertThat(amountValueOf(replay)).isEqualTo(amountValueOf(first))
         assertThat(balanceOf(original)).isEqualTo(130)
         assertThat(balanceOf(other)).isEqualTo(100)
         assertThat(transactionRowsFor(transactionId)).isEqualTo(1)
@@ -259,6 +260,8 @@ class AuthorizeTransactionEndpointTest : PostgresIntegrationTest() {
     private fun timestampOf(responseBody: String): String = read(responseBody, "$.transaction.timestamp")
 
     private fun balanceValueOf(responseBody: String): String = read(responseBody, "$.account.balance.value")
+
+    private fun amountValueOf(responseBody: String): String = read(responseBody, "$.transaction.amount.value")
 
     private fun read(
         responseBody: String,
