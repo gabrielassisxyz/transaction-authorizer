@@ -68,6 +68,14 @@ que opera só em BRL (ADR-003), não processa, logo 422.
 - **409 Conflict para saldo insuficiente**: sugere um conflito de estado a resolver e
   repetir, mas a recusa é final e determinística, não um conflito que um novo envio
   resolve.
+- **Recusa (200 com `status: FAILED`) para conta inexistente, mantendo 4xx para payload
+  inválido**: é a alternativa mais forte da lista, porque "não existe conta, logo não
+  autorizo" é uma leitura defensável do fluxo de decisão. Ela foi recusada pelo corpo da
+  resposta, não pela semântica: uma recusa carrega o id da transação persistida e o saldo
+  resultante da conta, e sem conta não há saldo a reportar nem transação a persistir, já
+  que o registro tem chave estrangeira para uma conta que não existe. Sobrariam campos
+  vazios ou zerados em um corpo que promete o saldo de uma conta real, o que é pior para
+  o cliente do que um 404 que diz exatamente o que houve.
 - **200 para tudo, inclusive conta inexistente e payload inválido**: apaga a diferença
   entre uma decisão tomada e uma requisição que impediu qualquer decisão, e obrigaria o
   cliente a inspecionar o corpo para saber se houve sequer processamento.
