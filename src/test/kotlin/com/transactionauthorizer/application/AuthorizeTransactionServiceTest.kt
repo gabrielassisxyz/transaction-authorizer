@@ -23,10 +23,10 @@ class AuthorizeTransactionServiceTest {
     @Test
     fun `it stamps the command from the clock and passes the request through unchanged`() {
         val captured = slot<AuthorizationCommand>()
-        val stored = AuthorizationResult.Approved(Money(70), now)
-        every { store.authorize(capture(captured)) } returns stored
         val transactionId = UUID.randomUUID()
         val accountId = UUID.randomUUID()
+        val stored = AuthorizationResult.Approved(accountId, TransactionType.DEBIT, Money(30), Money(70), now)
+        every { store.authorize(capture(captured)) } returns stored
 
         val result = service.authorize(transactionId, accountId, TransactionType.DEBIT, Money(30))
 

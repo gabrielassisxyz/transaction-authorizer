@@ -129,6 +129,32 @@ class AuthorizeTransactionEndpointTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `a replay with a different account and type returns the first decision entirely`() {
+        val original = account(balanceCents = 100)
+        val other = account(balanceCents = 100)
+        val transactionId = UUID.randomUUID()
+
+        val first = authorizeBody(transactionId, original, "CREDIT", "0.30", "SUCCEEDED")
+        // Same id, different account and transaction type: every field of the response must
+        // still come from the first decision, never a mix of stored and replayed values.
+        val replay =
+            authorize(transactionId, other, "DEBIT", "0.50")
+                .andExpect {
+                    status { isOk() }
+                    jsonPath("$.transaction.type") { value("CREDIT") }
+                    jsonPath("$.transaction.status") { value("SUCCEEDED") }
+                    jsonPath("$.account.id") { value(original.toString()) }
+                }.andReturn()
+                .response.contentAsString
+
+        assertThat(timestampOf(replay)).isEqualTo(timestampOf(first))
+        assertThat(balanceValueOf(replay)).isEqualTo(balanceValueOf(first))
+        assertThat(balanceOf(original)).isEqualTo(130)
+        assertThat(balanceOf(other)).isEqualTo(100)
+        assertThat(transactionRowsFor(transactionId)).isEqualTo(1)
+    }
+
+    @Test
     fun `a malformed body is rejected`() {
         mockMvc
             .post("/transactions/${UUID.randomUUID()}") {

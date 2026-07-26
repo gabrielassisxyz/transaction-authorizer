@@ -62,7 +62,9 @@ class JdbcTransactionStoreConcurrencyTest : PostgresIntegrationTest() {
         assertThat(balanceOf(account)).isEqualTo(70)
         // Every caller, winner and duplicate alike, receives the identical stored decision.
         assertThat(outcomes.toSet()).hasSize(1)
-        assertThat(outcomes).allMatch { it == AuthorizationResult.Approved(Money(70), FIXED_TIMESTAMP) }
+        assertThat(outcomes).allMatch {
+            it == AuthorizationResult.Approved(account, TransactionType.DEBIT, Money(30), Money(70), FIXED_TIMESTAMP)
+        }
     }
 
     private fun inParallel(

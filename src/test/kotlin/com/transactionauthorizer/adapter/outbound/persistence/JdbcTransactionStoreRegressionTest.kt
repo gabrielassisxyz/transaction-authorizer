@@ -74,8 +74,9 @@ class JdbcTransactionStoreRegressionTest : PostgresIntegrationTest() {
             await().atMost(TIMEOUT).until { lockWaiters() >= 1 }
             holder.commit()
 
-            assertThat(debit.get(TIMEOUT_SECONDS, TimeUnit.SECONDS))
-                .isEqualTo(AuthorizationResult.Approved(Money(50), FIXED_TIMESTAMP))
+            val expected =
+                AuthorizationResult.Approved(account, TransactionType.DEBIT, Money(100), Money(50), FIXED_TIMESTAMP)
+            assertThat(debit.get(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isEqualTo(expected)
         } finally {
             holder.close()
             worker.shutdownNow()
@@ -118,8 +119,9 @@ class JdbcTransactionStoreRegressionTest : PostgresIntegrationTest() {
 
         assertThat(claimRowsFor(transactionId)).isZero()
         insertAccount(account, balanceCents = 200)
-        assertThat(debit(account, cents = 100, transactionId = transactionId))
-            .isEqualTo(AuthorizationResult.Approved(Money(100), FIXED_TIMESTAMP))
+        val expected =
+            AuthorizationResult.Approved(account, TransactionType.DEBIT, Money(100), Money(100), FIXED_TIMESTAMP)
+        assertThat(debit(account, cents = 100, transactionId = transactionId)).isEqualTo(expected)
     }
 
     private fun raiseBalanceHoldingLock(
