@@ -59,11 +59,17 @@ fila principal e a sua dead-letter queue com política de redrive, e o
 `message-generator`, que semeia as 100 mil mensagens e termina. A aplicação nunca cria
 filas: o que ela espera encontrar é criado por infraestrutura, aqui e em produção.
 
+Se as portas padrão (5432, 4566, 8080) já estiverem em uso na máquina, `POSTGRES_PORT`,
+`LOCALSTACK_PORT` e `APP_PORT` remapeiam o lado host do compose; `DB_URL`,
+`SQS_ENDPOINT` e `SERVER_PORT` apontam a aplicação para as mesmas portas escolhidas
+quando ela roda fora do compose (`./gradlew bootRun`).
+
 Toda a configuração tem padrão para execução local e é sobrescrevível por variável de
 ambiente: `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `DB_POOL_SIZE`, `SQS_ENDPOINT`,
-`SQS_QUEUE_NAME`, `SQS_POLLERS`, `AWS_REGION`, `AWS_ACCESS_KEY_ID` e
-`AWS_SECRET_ACCESS_KEY`. Em ambiente real, `SQS_ENDPOINT` fica vazio (o SDK resolve o
-endpoint da região) e as chaves também, e aí a credencial vem da role da instância.
+`SQS_QUEUE_NAME`, `SQS_POLLERS`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY` e `SERVER_PORT`. Em ambiente real, `SQS_ENDPOINT` fica vazio (o
+SDK resolve o endpoint da região) e as chaves também, e aí a credencial vem da role da
+instância.
 
 ## Execução conteinerizada
 
