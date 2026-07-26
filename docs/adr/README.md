@@ -11,3 +11,4 @@ o contexto, a decisão, as consequências e as alternativas que foram pesadas e 
 | [004](004-idempotencia-da-autorizacao.md) | Idempotência da autorização por tabela de claims e hash da requisição |
 | [005](005-consumer-sqs-com-sdk-v2-e-ack-por-mensagem.md) | Consumer SQS com AWS SDK v2, ack por mensagem e dead-letter queue |
 | [006](006-semantica-http-da-recusa.md) | Semântica HTTP da recusa: recusa é 200, erro é ProblemDetail |
+| [007](007-armazenamento-relacional-acid.md) | Armazenamento relacional ACID para o livro-razão, e a postura sob partição |

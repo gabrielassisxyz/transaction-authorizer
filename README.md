@@ -147,7 +147,7 @@ As referências que embasam o desenho e o artefato concreto onde cada uma se mat
 
 | Referência | Onde se materializa |
 |---|---|
-| DDIA, CAP: postura CP sob concorrência | ADR-002, o update condicional atômico do saldo |
+| DDIA, CAP: postura CP na autorização | ADR-007, a escolha do armazenamento e o comportamento sob partição; ADR-002, o update condicional atômico do saldo |
 | Arquitetura hexagonal | estrutura de pacotes com a direção fixada pela suíte ArchUnit |
 | 12-Factor, SRE | configuração por ambiente, logs JSON no stdout, o par SLI/SLO em `docs/deploy.md` |
 | Padrões de resiliência | full jitter no consumer, dead-letter queue e idempotência, detalhados em `docs/failure-modes.md` |
