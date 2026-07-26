@@ -26,6 +26,16 @@ docker compose exec postgres \
 Toda conta semeada nasce com saldo zero, então o primeiro crédito da coleção é o que
 levanta o saldo para os débitos seguintes.
 
+## Rodar a coleção mais de uma vez
+
+Os ids de transação são fixos no arquivo (`creditId`, `debitId` e os literais dos
+demais cenários), e a identidade de idempotência é o `transactionId` sozinho, não o par
+conta+id. Rodar a coleção de novo com os mesmos ids reenvia cada requisição contra a
+decisão já armazenada em vez de mover saldo, o que também invalida os cenários
+seguintes, que assumem o saldo do primeiro crédito. Para repetir a demonstração, troque
+`creditId`, `debitId` e os UUIDs literais das demais requisições por valores novos antes
+de disparar de novo.
+
 ## Desabilitar uma conta para o cenário de recusa
 
 O ciclo de vida da conta não é exposto pela API: toda conta semeada é `ENABLED`. Para
