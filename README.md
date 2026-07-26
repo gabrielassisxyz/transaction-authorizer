@@ -37,9 +37,13 @@ não conseguem ambos passar. Decisões e trade-offs em `docs/adr/`.
 
 ## Execução local
 
-Pré-requisitos: Docker e JDK 21. A versão 21 é o LTS alinhado ao que roda em
-produção hoje, não uma versão presa por inércia: os recursos de que o serviço
-depende (virtual threads, entre outros) já são estáveis nela.
+Pré-requisitos: Docker, JDK 21 e acesso à internet (o passo 1 baixa certificados e
+módulos Go para gerar as mensagens de seed). A versão 21 é o LTS alinhado ao que roda
+em produção hoje, não uma versão presa por inércia: os recursos de que o serviço
+depende (virtual threads, entre outros) já são estáveis nela. O exemplo de `curl` mais
+abaixo usa `uuidgen` (pacote `util-linux` na maioria das distros). `bin/ci` só roda a
+varredura de segredos localmente se o `gitleaks` estiver instalado
+(`bin/install-hooks` cuida disso); sem ele esse gate específico existe só no CI.
 
 ```bash
 # 1. Sobe Postgres, localstack, a topologia de filas e o gerador de 100k mensagens
