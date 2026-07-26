@@ -4,7 +4,7 @@ Números da campanha de carga, um bloco por cenário, cada um com três corridas
 isolado. O método, o ambiente e os caveats que enquadram estes números estão no
 [README](README.md); leia-os antes das tabelas.
 
-Nenhuma corrida registrou erro: as 4,5 milhões de requisições do regime, do pico e da
+Nenhuma corrida registrou erro: as 3.775.191 requisições do regime, do pico e da
 conta quente responderam todas HTTP 200, incluindo os débitos recusados por saldo, que são
 decisão de autorização e não falha. As três corridas por cenário mostram a faixa, não um
 recorte favorável.
