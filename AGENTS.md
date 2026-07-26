@@ -168,9 +168,7 @@ config, commit messages, PR titles and bodies.
   uselessness. When your fresh measurement contradicts what the human vaguely remembers
   ("I changed this once, because of some problem"), **your measurement is the suspect first**
   — it may be measuring the case that *isn't* failing. Go find the original problem, then
-  decide. *(A CIFS share was benchmarked with a big sequential `dd`, looked fast, and the
-  local-disk download dir was "fixed" away — while the actual failure was random writes:
-  par2, unrar, torrent piece-writes. Two wrong commits.)*
+  decide.
 - **Goal-driven execution — define the success check, then loop to it.** Turn the task into
   something verifiable before coding: "add validation" → write tests for invalid inputs, then
   pass them; "fix the bug" → write a failing repro test, then pass it; "refactor X" → tests
