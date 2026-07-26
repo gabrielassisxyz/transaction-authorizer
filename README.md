@@ -91,6 +91,11 @@ para as dependências cacharem separadas do código, rodando como usuário sem p
 O serviço espera o `message-generator` terminar antes de subir, então na primeira
 execução já há mensagens para drenar.
 
+`docker compose --profile app up` e o fluxo do `bootRun` (seção anterior) semeiam a
+mesma base: rodar um depois do outro sem um `docker compose down -v` entre eles refaz o
+seed sobre um banco já semeado, dobrando as contas. `bin/e2e` e `bin/chaos` já cuidam
+disso e derrubam os volumes antes de subir.
+
 ## Observabilidade
 
 - Logs estruturados em JSON no stdout, com `transactionId` na via HTTP e `messageId` na
