@@ -64,6 +64,23 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+        '405':
+          description: >
+            Método diferente de POST no mesmo caminho. Cai no tratamento padrão do Spring
+            Boot, não no handler RFC 9457 dos demais erros: corpo application/json, não
+            application/problem+json.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DefaultError'
+        '415':
+          description: >
+            Content-Type diferente de application/json. Mesmo tratamento padrão do 405,
+            pelo mesmo motivo: a requisição nunca chega ao controller.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DefaultError'
 components:
   schemas:
     AuthorizeTransactionRequest:
@@ -122,13 +139,32 @@ components:
           enum: [BRL]
     Problem:
       type: object
-      description: Corpo de erro conforme RFC 9457.
+      description: >
+        Corpo de erro conforme RFC 9457, produzido pelo handler da aplicação. O membro
+        type do RFC não aparece: a aplicação nunca customiza esse campo, e o Spring omite
+        o valor padrão about:blank da serialização.
       properties:
-        type:
-          type: string
         title:
           type: string
         status:
           type: integer
         detail:
+          type: string
+        instance:
+          type: string
+          description: Caminho da requisição que gerou o erro.
+    DefaultError:
+      type: object
+      description: >
+        Corpo de erro padrão do Spring Boot para requisições que nunca chegam ao
+        controller (método ou Content-Type não suportado).
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+        error:
+          type: string
+        path:
           type: string
