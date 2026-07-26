@@ -23,16 +23,27 @@ A fila fica inalcançável (rede, credencial, indisponibilidade do serviço).
 
 O Postgres cai ou fica inalcançável.
 
-- **Via HTTP:** a readiness (`/actuator/health/readiness`) segue o banco e fica vermelha,
-  então o balanceador tira a instância de rotação. A liveness não tem dependência e
-  continua verde, então a plataforma não reinicia o processo e transforma uma queda de
-  dependência em cascata de reinícios.
+- **Via HTTP, no instante da queda:** cada requisição espera no máximo 3s por uma conexão
+  e recebe **503 com `Retry-After`**, nunca uma recusa. O circuit breaker que envolve a
+  porta de autorização abre depois das primeiras falhas de infraestrutura e, a partir daí,
+  as requisições falham em microssegundos, sem ocupar conexão nem thread. É o que impede
+  que o serviço acumule requisições paradas enquanto o sinal mais lento abaixo não chega
+  (ADR-008).
+- **Via HTTP, na escala de segundos:** a readiness (`/actuator/health/readiness`) segue o
+  banco e fica vermelha, então o balanceador tira a instância de rotação. Esse sinal é
+  necessário e é lento por construção: ele depende do intervalo da sonda e do número de
+  falhas consecutivas que a plataforma exige, e a própria sonda precisa de uma conexão do
+  pool para responder. O breaker é o sinal in-process que cobre a janela até lá. A liveness
+  não tem dependência e continua verde, então a plataforma não reinicia o processo e
+  transforma uma queda de dependência em cascata de reinícios.
 - **Consumo:** a criação de conta falha ao escrever, o poller trata como transitório e
   não apaga a mensagem. Sem o delete, a mensagem volta pela fila quando a visibilidade
   expira. O `maxReceiveCount` de 5 é o orçamento que absorve uma queda curta sem mandar
   mensagem válida para a dead-letter queue.
-- **Recuperação:** quando o banco volta, a readiness fica verde de novo, a instância
-  retorna à rotação e as mensagens redirigidas são consumidas. A criação é idempotente,
+- **Recuperação:** quando o banco volta, o breaker deixa passar algumas requisições de
+  prova depois da janela aberta e fecha sozinho se elas funcionam, sem intervenção e sem
+  reinício; a readiness fica verde de novo, a instância retorna à rotação e as mensagens
+  redirigidas são consumidas. A criação é idempotente,
   então uma mensagem que chegou a ser processada antes da falha não cria conta em
   duplicidade.
 

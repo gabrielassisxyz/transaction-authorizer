@@ -120,7 +120,9 @@ curl -X POST "http://localhost:8080/transactions/$(uuidgen)" \
 Aprovação e recusa retornam ambas 200, diferindo no campo `transaction.status`
 (`SUCCEEDED` ou `FAILED`): uma recusa por fundo insuficiente é uma decisão de negócio, não
 um erro. Requisição malformada é 400, conta inexistente é 404, e moeda diferente de BRL
-ou valor fora da faixa é 422, todos como `application/problem+json`. Contrato completo em
+ou valor fora da faixa é 422, todos como `application/problem+json`. Quando o
+armazenamento está indisponível a resposta é 503 com `Retry-After`, e não uma recusa: o
+serviço não decidiu, e dizer isso é diferente de dizer não (ADR-008). Contrato completo em
 `docs/openapi.yaml`.
 
 Para exercer cada um desses comportamentos sem montar requisição à mão, `docs/http/` traz
@@ -132,7 +134,7 @@ Postman, com a nota de como obter um `account_id` semeado.
 ```bash
 bin/ci    # formato, lint, testes e cobertura, o mesmo gate do CI
 bin/e2e   # smoke de ponta a ponta sobre o sistema conteinerizado (Docker, curl e jq)
-bin/chaos # derruba o Postgres no meio do consumo e prova a resiliência (Docker e curl)
+bin/chaos # derruba o Postgres e prova a resiliência das duas vias (Docker, curl, uuidgen)
 ```
 
 `bin/e2e` sobe o sistema inteiro com o profile `app`, espera a semente e a readiness,
@@ -150,7 +152,7 @@ As referências que embasam o desenho e o artefato concreto onde cada uma se mat
 | DDIA, CAP: postura CP na autorização | ADR-007, a escolha do armazenamento e o comportamento sob partição; ADR-002, o update condicional atômico do saldo |
 | Arquitetura hexagonal | estrutura de pacotes com a direção fixada pela suíte ArchUnit |
 | 12-Factor, SRE | configuração por ambiente, logs JSON no stdout, o par SLI/SLO em `docs/deploy.md` |
-| Padrões de resiliência | full jitter no consumer, dead-letter queue e idempotência, detalhados em `docs/failure-modes.md` |
+| Padrões de resiliência | full jitter no consumer, dead-letter queue, idempotência e o circuit breaker da autorização (ADR-008), detalhados em `docs/failure-modes.md` |
 | Pirâmide de testes | unitários no domínio, integração com Testcontainers, E2E sobre o compose, uma suíte ArchUnit |
 | OpenAPI, ADR | `docs/openapi.yaml` e `docs/adr/`, escritos junto da mudança que documentam |
 

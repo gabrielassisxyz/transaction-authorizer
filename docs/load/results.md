@@ -18,6 +18,14 @@ As tabelas abaixo são derivadas, não a fonte. Os artefatos que as produzem est
 | `results/hikari-campaign.csv` | Os gauges do pool por segundo, com epoch, cobrindo regime, pico e conta quente |
 | `results/manifest.csv` | Início, fim e código de saída de cada corrida, que é o que permite recortar o CSV na janela de qualquer cenário |
 
+Uma ressalva de honestidade sobre o que estes números medem: a campanha rodou antes do
+circuit breaker da autorização (ADR-008) entrar no caminho, e não foi refeita depois. O que
+o breaker acrescenta por requisição, com o circuito fechado, é um contador em memória, sem
+I/O e sem lock disputado, e o `connectionTimeout` de 3s que veio junto só tem efeito acima
+de qualquer espera observada aqui. Ainda assim, as tabelas abaixo descrevem o
+comportamento do artefato sem essa camada, e é assim que devem ser lidas. Refazer a
+campanha sobre o artefato atual é o que fecharia a diferença.
+
 ## Máquinas
 
 | Papel | Tipo de instância | vCPU | Memória | Zona |

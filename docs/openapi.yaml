@@ -64,6 +64,21 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+        '503':
+          description: >
+            O serviço não conseguiu alcançar o armazenamento e por isso não decidiu nada
+            sobre esta transação. Não é uma recusa: nenhuma transação foi persistida e o
+            saldo não mudou, então reenviar o mesmo transactionId depois da janela é
+            seguro. O cabeçalho Retry-After diz quanto esperar.
+          headers:
+            Retry-After:
+              description: Segundos a esperar antes de reenviar.
+              schema:
+                type: integer
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
         '405':
           description: >
             Método diferente de POST no mesmo caminho. Cai no tratamento padrão do Spring
