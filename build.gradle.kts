@@ -30,6 +30,11 @@ dependencies {
     runtimeOnly("io.micrometer:micrometer-registry-prometheus")
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
+    // The circuit breaker core library, not the Spring Boot starter: the starter targets
+    // Boot 3 and brings AOP with it, and neither the annotation nor the autoconfiguration is
+    // wanted here. The breaker is wired by hand as a decorator over the outbound port, so no
+    // resilience framework ever reaches the application layer.
+    implementation(libs.resilience4j.circuitbreaker)
     implementation(platform(libs.aws.bom))
     implementation(libs.aws.sqs)
     implementation("org.jetbrains.kotlin:kotlin-reflect")
