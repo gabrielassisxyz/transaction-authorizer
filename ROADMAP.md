@@ -74,6 +74,18 @@ e não foi construído, na ordem em que a medição justifica.
 - **`Retry-After` calibrado contra um failover real:** o valor atual foi derivado de derrubar
   um contêiner, que falha instantâneo. A janela de uma promoção Multi-AZ é muito maior, e um
   cliente que respeita o header reenviaria durante toda ela.
+- **Teto de ingestão da criação de contas, medido, e uma alavanca para movê-lo:** a campanha
+  de carga isola a via HTTP de propósito, então o consumo da fila não tem número nenhum: nem
+  taxa de drenagem, nem teto. Medir vem primeiro. Depois existem duas alavancas, e elas não
+  são equivalentes. `DeleteMessageBatch` apaga até dez mensagens por chamada, contra a chamada
+  por mensagem de hoje, o que corta uma ordem de grandeza em requisições ao SQS, em latência
+  acumulada e em custo por mensagem; o preço é que o ack deixa de ser individual e passa a
+  exigir tratamento de sucesso parcial, que é justamente a simplicidade que o ADR-005 escolheu
+  ao decidir por ack por mensagem, então trocar exige revisitar aquela decisão e não apenas
+  chamar outra API. A segunda alavanca é separar o consumer num deployable próprio, com
+  orçamento de conexão próprio, o que resolve ao mesmo tempo o bulkhead entre as duas vias e
+  devolve uma escala independente da via HTTP, hoje inexistente porque o consumer roda dentro
+  da mesma instância e disputa o mesmo pool.
 - **Ordem do livro-razão atribuída pelo banco:** o `timestamp` gravado é
   `clock.instant()` da instância que atendeu, escolhido para tornar os testes determinísticos.
   Com uma instância isso é irrepreensível; com várias, duas transações na mesma conta podem
