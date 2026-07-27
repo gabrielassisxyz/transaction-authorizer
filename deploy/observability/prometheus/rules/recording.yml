@@ -1,12 +1,12 @@
 groups:
-  - name: autorizacao-sli
+  - name: authorization-sli
     interval: 30s
     rules:
-      # As duas pernas do gate de rollout descrito em docs/deploy.md. Elas viram regra de
-      # recording porque o gate, o alerta e um painel precisam ler exatamente a mesma
-      # expressao: tres consultas escritas a mao divergem, e a divergencia aparece no pior
-      # momento, durante um rollback.
-      - record: autorizacao:latencia_p99:5m
+      # The two legs of the rollout gate described in docs/deploy.md. They are recording
+      # rules because the gate, the alert and a dashboard have to read the exact same
+      # expression: three hand-written queries drift apart, and the drift shows up at the
+      # worst possible moment, during a rollback.
+      - record: authorization:latency_p99:5m
         expr: |
           histogram_quantile(
             0.99,
@@ -15,9 +15,9 @@ groups:
             )
           )
 
-      # Disponibilidade e a fracao de respostas nao-5xx. A recusa por saldo responde 200
-      # (ADR-006), entao uma decisao de negocio legitima nunca entra nesta conta como falha.
-      - record: autorizacao:disponibilidade:5m
+      # Availability is the fraction of non-5xx responses. A refusal for insufficient funds
+      # answers 200 (ADR-006), so a legitimate business decision never lands here as a failure.
+      - record: authorization:availability:5m
         expr: |
           1
           -
@@ -27,18 +27,18 @@ groups:
             clamp_min(sum(rate(http_server_requests_seconds_count{uri="/transactions/{transactionId}"}[5m])), 1e-9)
           )
 
-  - name: capacidade
+  - name: capacity
     interval: 30s
     rules:
-      # Saturacao do pool por instancia. O teto de concorrencia deste servico e o pool de
-      # conexoes, nao a CPU (docs/scale.md), entao esta e a serie que diz se a instancia
-      # esta no limite, e nenhuma metrica de processador diz isso.
-      - record: instancia:pool_saturacao:ratio
+      # Pool saturation per instance. The concurrency ceiling of this service is the
+      # connection pool, not the CPU (docs/scale.md), so this is the series that says
+      # whether an instance is at its limit, and no processor metric says it.
+      - record: instance:pool_saturation:ratio
         expr: |
           hikaricp_connections_active / clamp_min(hikaricp_connections_max, 1)
 
-      # Conexoes somadas sobre a frota inteira. E a grandeza que o max_connections do banco
-      # limita, e o Postgres nao distingue de qual instancia cada conexao veio: e este numero,
-      # e nao a contagem de tasks, que precisa caber no orcamento.
-      - record: frota:conexoes_totais:sum
+      # Connections summed over the whole fleet. This is the quantity the database's
+      # max_connections caps, and Postgres does not care which instance each connection came
+      # from: it is this number, not the task count, that has to fit the budget.
+      - record: fleet:total_connections:sum
         expr: sum(hikaricp_connections_max)
