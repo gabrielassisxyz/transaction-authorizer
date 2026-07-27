@@ -128,11 +128,18 @@ components:
               $ref: '#/components/schemas/Money'
     Money:
       type: object
+      description: >
+        Um único formato de dinheiro, deliberadamente compartilhado pelo valor da
+        transação e pelo saldo da conta: os dois são a mesma ideia, um montante com
+        moeda, e um nome de campo diferente para cada um faria o cliente escrever dois
+        parsers para o mesmo tipo.
       required: [value, currency]
       properties:
         value:
           type: number
-          description: Decimal com no máximo duas casas significativas, sempre positivo.
+          description: >
+            Decimal com no máximo duas casas significativas. Nunca negativo, e o valor
+            de uma transação é sempre maior que zero; um saldo pode ser zero.
           example: 10.50
         currency:
           type: string
