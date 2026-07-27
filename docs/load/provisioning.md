@@ -39,7 +39,7 @@ própria stack do compose:
 1. No SUT, suba a stack com o app:
 
    ```sh
-   APP_BIND=0.0.0.0 docker compose --profile app up -d --build
+   APP_BIND=0.0.0.0 docker compose up -d --build
    ```
 
    O app fica atrás do profile `app`, então sem ele a stack sobe Postgres, localstack e o
@@ -54,7 +54,7 @@ própria stack do compose:
 
    Os valores de tuning viajam pelo mesmo caminho: `DB_POOL_SIZE` e `SQS_POLLERS` são
    repassados ao container e assumem os defaults da aplicação quando não declarados, então
-   uma varredura de pool é `DB_POOL_SIZE=40 docker compose --profile app up -d`, sem editar
+   uma varredura de pool é `DB_POOL_SIZE=40 docker compose up -d`, sem editar
    arquivo nenhum entre corridas.
 2. Espere `message-generator exited with code 0` e o consumer do app drenar a fila. As
    contas passam a existir no Postgres do SUT.

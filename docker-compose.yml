@@ -89,16 +89,22 @@ services:
       "
     working_dir: /home
 
-  # Behind the `app` profile so the default compose still serves the bootRun workflow: with
-  # `docker compose --profile app up` one command runs the whole system containerized. It
-  # waits for the seed to finish so a first run has messages to drain, and points at the
-  # compose service names, not localhost.
+  # A default service, so `docker compose up` runs the whole system containerized in one
+  # command: the artefact that ships is what a first contact meets, not a development loop.
+  # That loop is still one command away, `docker compose up -d --scale app=0`, which brings
+  # up the dependencies alone for `./gradlew bootRun`. Points at the compose service names,
+  # not localhost.
   app:
-    profiles: [ "app" ]
     build:
       context: .
       dockerfile: Dockerfile
     container_name: transaction-authorizer
+    # Só o banco é dependência de execução: a migração roda na partida e a readiness segue
+    # o banco, então sem Postgres não há autorização. As outras duas condições existem para
+    # semear, não porque a aplicação precise delas: com a fila inalcançável o poller recua
+    # com full jitter e a via HTTP segue atendendo, que é o comportamento documentado em
+    # docs/failure-modes.md. Esperar o gerador terminar é o que garante conta semeada no
+    # primeiro `up`, e sem isso a primeira requisição de quem chega pelo README daria 404.
     depends_on:
       postgres:
         condition: service_healthy

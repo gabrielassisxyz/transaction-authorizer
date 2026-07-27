@@ -43,7 +43,7 @@ não qual serviço da AWS cabe em cada caixa:
   de falha.
 - **Orquestrador de containers (ECS Fargate):** reconcilia a contagem desejada de tasks,
   substitui a que morre e é o substrato do deploy canário abaixo. A imagem é a mesma que
-  `docker compose --profile app` sobe localmente, então o artefato testado é o artefato
+  `docker compose up` sobe localmente, então o artefato testado é o artefato
   publicado.
 - **RDS Postgres Multi-AZ:** o saldo é o estado durável e a invariante de nunca-negativo
   mora num update condicional atômico do banco, então ele é o componente que mais precisa

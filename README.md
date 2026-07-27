@@ -35,66 +35,70 @@ da abstração, não do JDBC. A invariante de saldo nunca-negativo não vive em 
 num update condicional atômico no adaptador de persistência, onde dois débitos concorrentes
 não conseguem ambos passar. Decisões e trade-offs em `docs/adr/`.
 
-## Execução local
+## Execução
 
-Pré-requisitos: Docker, JDK 21 e acesso à internet (o passo 1 baixa certificados e
-módulos Go para gerar as mensagens de seed). A versão 21 é o LTS alinhado ao que roda
-em produção hoje, não uma versão presa por inércia: os recursos de que o serviço
-depende (virtual threads, entre outros) já são estáveis nela. O exemplo de `curl` mais
-abaixo usa `uuidgen` (pacote `util-linux` na maioria das distros). `bin/ci` só roda a
-varredura de segredos localmente se o `gitleaks` estiver instalado
-(`bin/install-hooks` cuida disso); sem ele esse gate específico existe só no CI.
+Pré-requisitos: Docker e acesso à internet (a subida baixa certificados e módulos Go
+para gerar as mensagens de seed). Um único comando sobe o sistema inteiro, já
+conteinerizado:
 
 ```bash
-# 1. Sobe Postgres, localstack, a topologia de filas e o gerador de 100k mensagens
-docker compose up -d
-
-# 2. Aguarda a mensagem "message-generator exited with code 0" nos logs
-docker compose logs -f message-generator
-
-# 3. Roda a aplicação; ela consome a fila e cria as contas
-./gradlew bootRun
+docker compose up --build
 ```
 
 Health check: `curl http://localhost:8080/actuator/health`
 
-O compose sobe quatro serviços: Postgres, localstack, um `sqs-configurator` que cria a
-fila principal e a sua dead-letter queue com política de redrive, e o
-`message-generator`, que semeia as 100 mil mensagens e termina. A aplicação nunca cria
-filas: o que ela espera encontrar é criado por infraestrutura, aqui e em produção.
-
-Se as portas padrão (5432, 4566, 8080) já estiverem em uso na máquina, `POSTGRES_PORT`,
-`LOCALSTACK_PORT` e `APP_PORT` remapeiam o lado host do compose; `DB_URL`,
-`SQS_ENDPOINT` e `SERVER_PORT` apontam a aplicação para as mesmas portas escolhidas
-quando ela roda fora do compose (`./gradlew bootRun`).
-
-Toda a configuração tem padrão para execução local e é sobrescrevível por variável de
-ambiente: `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `DB_POOL_SIZE`, `SQS_ENDPOINT`,
-`SQS_QUEUE_NAME`, `SQS_POLLERS`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`,
-`AWS_SECRET_ACCESS_KEY` e `SERVER_PORT`. Em ambiente real, `SQS_ENDPOINT` fica vazio (o
-SDK resolve o endpoint da região) e as chaves também, e aí a credencial vem da role da
-instância.
-
-## Execução conteinerizada
-
-A aplicação também roda como imagem, e um único comando sobe o sistema inteiro. O
-serviço da aplicação fica atrás do profile `app`, então o compose padrão continua
-servindo o fluxo com `bootRun`:
-
-```bash
-# Sobe dependências, semeia as mensagens e sobe a aplicação já conteinerizada
-docker compose --profile app up --build
-```
+O compose sobe cinco serviços: Postgres, localstack, um `sqs-configurator` que cria a
+fila principal e a sua dead-letter queue com política de redrive, o `message-generator`,
+que semeia as 100 mil mensagens e termina, e a aplicação. Ela nunca cria filas: o que
+espera encontrar é criado por infraestrutura, aqui e em produção. A aplicação espera o
+gerador terminar antes de subir, então na primeira execução já há mensagens para drenar.
 
 A imagem é multi-stage: build no JDK 21 e runtime num JRE slim, com o jar em camadas
 para as dependências cacharem separadas do código, rodando como usuário sem privilégio.
-O serviço espera o `message-generator` terminar antes de subir, então na primeira
-execução já há mensagens para drenar.
+É a mesma imagem que iria para um registro, então o que se testa aqui é o que se publica.
 
-`docker compose --profile app up` e o fluxo do `bootRun` (seção anterior) semeiam a
-mesma base: rodar um depois do outro sem um `docker compose down -v` entre eles refaz o
-seed sobre um banco já semeado, dobrando as contas. `bin/e2e` e `bin/chaos` já cuidam
-disso e derrubam os volumes antes de subir.
+Sobre as dependências, vale a distinção porque ela aparece nos modos de falha: **só o
+banco é dependência de execução.** A migração roda na partida e a readiness segue o
+banco, então sem Postgres não há autorização. Com a fila inalcançável o poller recua com
+full jitter e a via HTTP continua atendendo; o compose espera pela fila e pelo gerador
+para *semear*, não porque a aplicação precise deles. Detalhes em `docs/failure-modes.md`.
+
+Se as portas padrão (5432, 4566, 8080) já estiverem em uso, `POSTGRES_PORT`,
+`LOCALSTACK_PORT` e `APP_PORT` remapeiam o lado host do compose. Toda a configuração tem
+padrão para execução local e é sobrescrevível por variável de ambiente: `DB_URL`,
+`DB_USERNAME`, `DB_PASSWORD`, `DB_POOL_SIZE`, `SQS_ENDPOINT`, `SQS_QUEUE_NAME`,
+`SQS_POLLERS`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` e
+`SERVER_PORT`. Em ambiente real, `SQS_ENDPOINT` fica vazio (o SDK resolve o endpoint da
+região) e as chaves também, e aí a credencial vem da role da instância.
+
+## Loop de desenvolvimento
+
+Para iterar no código sem reconstruir a imagem a cada mudança, o mesmo compose sobe só
+as dependências e a aplicação roda pela JVM local. Requer JDK 21, que é o LTS alinhado ao
+que roda em produção hoje, não uma versão presa por inércia: os recursos de que o serviço
+depende (virtual threads, entre outros) já são estáveis nela.
+
+```bash
+# Sobe Postgres, localstack, a topologia de filas e o gerador, sem a aplicação
+docker compose up -d --scale app=0
+
+# Aguarda a mensagem "message-generator exited with code 0"
+docker compose logs -f message-generator
+
+# Roda a aplicação pela JVM local
+./gradlew bootRun
+```
+
+`DB_URL`, `SQS_ENDPOINT` e `SERVER_PORT` apontam a aplicação para as portas escolhidas
+quando ela roda fora do compose.
+
+Os dois fluxos semeiam a mesma base: rodar um depois do outro sem um `docker compose
+down -v` entre eles refaz o seed sobre um banco já semeado, dobrando as contas. `bin/e2e`
+e `bin/chaos` já cuidam disso e derrubam os volumes antes de subir.
+
+O exemplo de `curl` mais abaixo usa `uuidgen` (pacote `util-linux` na maioria das
+distros). `bin/ci` só roda a varredura de segredos localmente se o `gitleaks` estiver
+instalado (`bin/install-hooks` cuida disso); sem ele esse gate específico existe só no CI.
 
 ## Observabilidade
 

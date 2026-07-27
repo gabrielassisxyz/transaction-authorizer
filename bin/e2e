@@ -15,7 +15,7 @@ READY_RETRIES=60
 SEED_RETRIES=60
 SLEEP=5
 
-cleanup() { docker compose --profile app down -v >/dev/null 2>&1 || true; }
+cleanup() { docker compose down -v >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 fail() {
@@ -34,8 +34,8 @@ post_transaction() {
 }
 
 echo "==> bringing the system up from scratch (builds the app image on first run)"
-docker compose --profile app down -v >/dev/null 2>&1 || true
-docker compose --profile app up -d --build
+docker compose down -v >/dev/null 2>&1 || true
+docker compose up -d --build
 
 echo "==> waiting for app readiness (the app starts only after the seed completes)"
 ready=""
