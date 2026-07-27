@@ -21,6 +21,14 @@ spring:
       # Under virtual threads the connection pool, not the thread pool, is the
       # concurrency limit, so it is sized explicitly instead of inherited.
       maximum-pool-size: ${DB_POOL_SIZE:20}
+      # How long a request waits for a connection before failing. The inherited default is
+      # 30s, and 30s is not a queue, it is a pile: with virtual threads nothing bounds
+      # arrivals, so a dead database parks every request that arrives for half a minute and
+      # the connection ceiling of the HTTP server, not the timeout, becomes the real limit.
+      # 3s is measured, not guessed: the spike scenario in docs/load/ absorbs a tenfold
+      # surge with a maximum latency of 2.1s and no error, so a legitimate queue still fits
+      # underneath while a dead dependency is recognised in seconds (ADR-008).
+      connection-timeout: ${DB_CONNECTION_TIMEOUT_MS:3000}
   flyway:
     enabled: true
 

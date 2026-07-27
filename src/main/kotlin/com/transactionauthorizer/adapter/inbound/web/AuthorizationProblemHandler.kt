@@ -1,8 +1,12 @@
 package com.transactionauthorizer.adapter.inbound.web
 
+import com.transactionauthorizer.application.port.AuthorizationUnavailableException
 import com.transactionauthorizer.domain.Money
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ProblemDetail
+import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
@@ -40,6 +44,22 @@ class AuthorizationProblemHandler {
     // service accepts or the amount does not fit the ledger.
     @ExceptionHandler(UnsupportedCurrencyException::class, AmountOutOfRangeException::class)
     fun onUnprocessable(e: RuntimeException): ProblemDetail = problem(HttpStatus.UNPROCESSABLE_ENTITY, e.message)
+
+    // The one outcome that is not a decision and not a bad request: the service could not
+    // reach its store, so it says so instead of inventing a refusal. Retry-After carries the
+    // breaker's own open window, so the client is told how long the answer will stay this way.
+    @ExceptionHandler(AuthorizationUnavailableException::class)
+    fun onStoreUnavailable(e: AuthorizationUnavailableException): ResponseEntity<ProblemDetail> =
+        ResponseEntity
+            .status(HttpStatus.SERVICE_UNAVAILABLE)
+            .header(HttpHeaders.RETRY_AFTER, e.retryAfter.toSeconds().toString())
+            .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+            .body(
+                problem(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "the authorization store is unavailable; no decision was taken for this transaction",
+                ),
+            )
 
     @ExceptionHandler(HttpMessageNotReadableException::class)
     fun onMalformedBody(): ProblemDetail = problem(HttpStatus.BAD_REQUEST, "request body is missing or malformed")

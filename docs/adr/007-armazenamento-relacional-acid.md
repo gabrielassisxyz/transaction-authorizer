@@ -39,8 +39,8 @@ o banco está inalcançável, o autorizador **não decide**, e o que ele não po
 transformar isso em recusa. Uma recusa é uma decisão de negócio persistida, que carrega um
 id de transação e um saldo resultante; um débito que não pôde ser verificado não é uma
 recusa, e devolvê-lo como tal entregaria ao cliente um veredito final que o serviço nunca
-alcançou. Uma dependência indisponível sai por um código de erro, não por um `status`
-no corpo.
+alcançou. Uma dependência indisponível sai por um código de erro, o 503 do ADR-008, e não
+por um `status` no corpo.
 
 A disponibilidade é recuperada por redundância na camada do banco, réplica e failover, não
 relaxando a invariante. É a troca que a natureza do serviço impõe: aprovar um débito que

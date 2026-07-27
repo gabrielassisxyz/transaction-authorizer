@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # bin/chaos: resilience check over the composed system. Kill Postgres mid-consume and prove
-# the consumer copes: it survives, the poll-loop backoff shows in the logs, nothing valid is
-# lost to the dead-letter queue, no account is applied twice (the idempotent create absorbs
-# redelivery), and consumption resumes once Postgres returns. Needs Docker and curl.
+# both paths cope. The consumer: it survives, the poll-loop backoff shows in the logs,
+# nothing valid is lost to the dead-letter queue, no account is applied twice (the
+# idempotent create absorbs redelivery), and consumption resumes once Postgres returns. The
+# HTTP path: it answers 503 immediately with the circuit breaker open, never a refusal and
+# never a long wait on a connection that will not come. Needs Docker, curl and uuidgen.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -23,6 +25,12 @@ psql_one() {
 }
 
 app_state() { docker compose ps app --format '{{.State}}' 2>/dev/null; }
+
+# grep -c, never grep -q: -q exits at the first match, which kills `docker compose logs`
+# with SIGPIPE, and under `set -o pipefail` that turns a found line into a failed check.
+# It is a race against how fast the log is written, so it fails intermittently on a match
+# that is really there.
+app_logged() { docker compose logs app 2>/dev/null | grep -c -- "$1" >/dev/null; }
 
 dlq_depth() {
     local url
@@ -60,6 +68,11 @@ done
 [ "${before:-0}" -gt 0 ] || fail "no accounts were consumed before the outage"
 echo "    consumed $before accounts before the outage"
 
+# Captured while the database is still up: the HTTP check below needs a real account id,
+# and after the outage starts there is nowhere to read one from.
+account=$(psql_one "SELECT id FROM accounts LIMIT 1")
+[ -n "$account" ] || fail "no seeded account to authorize against"
+
 echo "==> killing Postgres mid-consume"
 docker compose stop postgres
 
@@ -67,7 +80,7 @@ echo "==> the consumer must survive and back off"
 backoff=""
 for _ in $(seq 1 40); do
     [ "$(app_state)" = "running" ] || fail "app exited during the Postgres outage"
-    if docker compose logs app 2>/dev/null | grep -q "backing off"; then
+    if app_logged "backing off"; then
         backoff=1
         break
     fi
@@ -75,6 +88,34 @@ for _ in $(seq 1 40); do
 done
 [ -n "$backoff" ] || fail "no backoff appeared in the logs during the outage"
 echo "    backoff observed, app still running"
+
+echo "==> the HTTP path must answer 503 fast, never a refusal, while the database is gone"
+authorize() { # $1 = what to print with %{...}; posts one credit against the seeded account
+    curl -s -o /dev/null -m 10 -w "$1" -X POST "$APP/transactions/$(uuidgen)" \
+        -H 'Content-Type: application/json' \
+        -d '{"account_id":"'"$account"'","type":"CREDIT","amount":{"value":1.00,"currency":"BRL"}}'
+}
+
+# Enough calls to fill the breaker's window, in parallel, the way real traffic arrives.
+for _ in $(seq 1 12); do
+    authorize '' &
+done
+# A non-zero curl here is not the verdict; the timed request below is.
+wait || true
+
+# Read from a here-string, not from the command directly: curl's write-out ends without a
+# newline, and `read` reports failure at EOF even after assigning, which under `set -e`
+# kills the script before it can assert anything.
+measured=$(authorize '%{http_code} %{time_total}')
+read -r code elapsed <<<"$measured"
+[ "$code" = "503" ] || fail "expected 503 while the database was down, got $code"
+# The number that matters: with the breaker open the call never reaches the pool, so the
+# answer comes back immediately instead of after the connection timeout.
+awk -v t="$elapsed" 'BEGIN { exit !(t < 1.0) }' ||
+    fail "the 503 took ${elapsed}s, which means the request still waited on the pool"
+app_logged "circuit breaker moved to OPEN" ||
+    fail "the breaker never opened, so the 503 came from the raw connection failure"
+echo "    503 in ${elapsed}s with the breaker open"
 
 echo "==> restoring Postgres"
 docker compose start postgres
