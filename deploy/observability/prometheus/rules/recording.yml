@@ -1,0 +1,45 @@
+groups:
+  - name: autorizacao-sli
+    interval: 30s
+    rules:
+      # As duas pernas do gate de rollout descrito em docs/deploy.md. Elas viram regra de
+      # recording porque o gate, o alerta e um painel precisam ler exatamente a mesma
+      # expressao: tres consultas escritas a mao divergem, e a divergencia aparece no pior
+      # momento, durante um rollback.
+      - record: autorizacao:latencia_p99:5m
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (le) (
+              rate(http_server_requests_seconds_bucket{uri="/transactions/{transactionId}"}[5m])
+            )
+          )
+
+      # Disponibilidade e a fracao de respostas nao-5xx. A recusa por saldo responde 200
+      # (ADR-006), entao uma decisao de negocio legitima nunca entra nesta conta como falha.
+      - record: autorizacao:disponibilidade:5m
+        expr: |
+          1
+          -
+          (
+            sum(rate(http_server_requests_seconds_count{uri="/transactions/{transactionId}",status=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(http_server_requests_seconds_count{uri="/transactions/{transactionId}"}[5m])), 1e-9)
+          )
+
+  - name: capacidade
+    interval: 30s
+    rules:
+      # Saturacao do pool por instancia. O teto de concorrencia deste servico e o pool de
+      # conexoes, nao a CPU (docs/scale.md), entao esta e a serie que diz se a instancia
+      # esta no limite, e nenhuma metrica de processador diz isso.
+      - record: instancia:pool_saturacao:ratio
+        expr: |
+          hikaricp_connections_active / clamp_min(hikaricp_connections_max, 1)
+
+      # Conexoes somadas sobre a frota inteira. E a grandeza que a curva medida em
+      # docs/load/results.md limita: o joelho fica entre 20 e 40 conexoes concorrentes
+      # contra o banco, e o throughput regride em 80, independentemente de quantas tasks
+      # as abriram.
+      - record: frota:conexoes_totais:sum
+        expr: sum(hikaricp_connections_max)

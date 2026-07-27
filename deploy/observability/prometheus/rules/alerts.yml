@@ -1,0 +1,93 @@
+groups:
+  - name: gate-de-rollout
+    rules:
+      # As duas condicoes que docs/deploy.md manda reverter o canario sem esperar decisao
+      # humana. Ficam aqui, versionadas, porque um gate que so existe em prosa nao reverte
+      # nada.
+      - alert: LatenciaP99AcimaDoAlvo
+        expr: autorizacao:latencia_p99:5m > 0.15
+        for: 5m
+        labels:
+          severity: critical
+          acao: rollback
+        annotations:
+          summary: "p99 da autorizacao acima do alvo"
+          description: >
+            p99 em {{ $value | humanizeDuration }} contra alvo de 150ms, sustentado pela
+            janela do degrau. Perna de latencia do gate de rollout.
+
+      - alert: DisponibilidadeAbaixoDoAlvo
+        expr: autorizacao:disponibilidade:5m < 0.999
+        for: 5m
+        labels:
+          severity: critical
+          acao: rollback
+        annotations:
+          summary: "disponibilidade da autorizacao abaixo do alvo"
+          description: >
+            Fracao de nao-5xx em {{ $value | humanizePercentage }} contra alvo de 99,9%.
+            Recusa por saldo responde 200 e nao entra nesta conta.
+
+  - name: capacidade
+    rules:
+      # O alerta que existe por causa da aritmetica de frota em docs/scale.md. Fila no pool
+      # nao e um pico passageiro quando persiste: e a frota encostando no teto de conexoes
+      # do banco, e a reacao correta e o oposto da intuicao, porque subir tasks aumenta o
+      # total de conexoes e a curva medida regride depois do joelho.
+      - alert: FilaNoPoolSustentada
+        expr: hikaricp_connections_pending > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "requisicoes esperando conexao ha 10 minutos"
+          description: >
+            {{ $value }} requisicoes na fila do pool. Nao suba tasks: cada task adiciona 20
+            conexoes ao mesmo banco e a curva em docs/load/results.md regride acima do
+            joelho. Avalie o pooler de conexoes antes de aumentar a frota.
+
+      - alert: FrotaAcimaDoJoelhoMedido
+        expr: frota:conexoes_totais:sum > 40
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "conexoes da frota acima do joelho medido"
+          description: >
+            {{ $value }} conexoes somadas contra o banco. A varredura em
+            docs/load/results.md mede queda de throughput acima de 40 conexoes
+            concorrentes. Acima daqui, mais tasks entregam menos.
+
+  - name: dependencias
+    rules:
+      - alert: CircuitoDaAutorizacaoAberto
+        expr: authorizations_circuit_open > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "circuito da autorizacao aberto ou sondando recuperacao"
+          description: >
+            O armazenamento esta inalcancavel e a autorizacao responde 503 com Retry-After,
+            sem persistir recusa (ADR-008).
+
+      - alert: FilaSqsInalcancavel
+        expr: sqs_connectivity == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "fila de criacao de contas inalcancavel"
+          description: >
+            A via HTTP segue sa: a readiness nao acompanha a fila de proposito, entao o
+            autorizador continua em rotacao enquanto o consumo espera.
+
+      - alert: MensagensVenenoCrescendo
+        expr: increase(sqs_messages_total{outcome="poison"}[15m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "mensagem descartada para a dead-letter queue"
+          description: >
+            Corpo que nao parseia chegou ao orcamento de retentativa. A dead-letter queue e
+            ponto de parada para decisao humana, nao caminho de retentativa automatica.

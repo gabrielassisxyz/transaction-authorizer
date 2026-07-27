@@ -13,3 +13,4 @@ o contexto, a decisão, as consequências e as alternativas que foram pesadas e 
 | [006](006-semantica-http-da-recusa.md) | Semântica HTTP da recusa: recusa é 200, erro é ProblemDetail |
 | [007](007-armazenamento-relacional-acid.md) | Armazenamento relacional ACID para o livro-razão, e a postura sob partição |
 | [008](008-circuit-breaker-da-autorizacao.md) | Circuit breaker na porta de autorização, e o timeout de conexão que o torna possível |
+| [009](009-orquestrador-e-dimensionamento-da-frota.md) | Orquestrador de containers, e a frota dimensionada pelo orçamento de conexão |
