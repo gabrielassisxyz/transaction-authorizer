@@ -99,12 +99,13 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: transaction-authorizer
-    # Só o banco é dependência de execução: a migração roda na partida e a readiness segue
-    # o banco, então sem Postgres não há autorização. As outras duas condições existem para
-    # semear, não porque a aplicação precise delas: com a fila inalcançável o poller recua
-    # com full jitter e a via HTTP segue atendendo, que é o comportamento documentado em
-    # docs/failure-modes.md. Esperar o gerador terminar é o que garante conta semeada no
-    # primeiro `up`, e sem isso a primeira requisição de quem chega pelo README daria 404.
+    # Only the database is a runtime dependency: migration runs at startup and readiness
+    # follows it, so without Postgres there is no authorization. The other two conditions
+    # are here to seed, not because the application needs them: with the queue unreachable
+    # the poller backs off with full jitter and the HTTP path keeps serving, which is the
+    # behaviour documented in docs/failure-modes.md. Waiting for the generator is what
+    # guarantees a seeded account on the first `up`; without it the first request someone
+    # makes from the README would 404.
     depends_on:
       postgres:
         condition: service_healthy
