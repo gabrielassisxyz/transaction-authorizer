@@ -157,7 +157,7 @@ está argumentada por escrito, com as alternativas que foram pesadas e recusadas
 | Livro-razão relacional ACID, e recusar em vez de aprovar um débito que não se consegue verificar sob partição | [ADR-007](docs/adr/007-armazenamento-relacional-acid.md), a escolha do armazenamento; [ADR-002](docs/adr/002-controle-de-concorrencia-do-saldo.md), o update condicional atômico do saldo |
 | Núcleo sem dependência de framework, com a direção fixada por teste e não por convenção | [`HexagonalArchitectureTest`](src/test/kotlin/com/transactionauthorizer/architecture/HexagonalArchitectureTest.kt), que derruba o build se um adaptador inverter a seta |
 | Degradar sob falha de dependência sem nunca corromper o saldo nem perder mensagem válida | [ADR-008](docs/adr/008-circuit-breaker-da-autorizacao.md), o circuit breaker e o timeout que o torna possível; [`docs/failure-modes.md`](docs/failure-modes.md), componente a componente |
-| Frota dimensionada pelo orçamento de conexão do banco, não pela CPU | [ADR-009](docs/adr/009-orquestrador-e-dimensionamento-da-frota.md) e [`docs/scale.md`](docs/scale.md), com a curva medida que sustenta o número |
+| Frota dimensionada pelo orçamento de conexão do banco, não pela CPU | [ADR-009](docs/adr/009-orquestrador-e-dimensionamento-da-frota.md) e [`docs/scale.md`](docs/scale.md), com a medição de saturação do pool que descarta a métrica de CPU |
 
 ## Documentação
 
