@@ -5,9 +5,9 @@ gerador e servidor no mesmo host mede loopback: o gerador rouba CPU do servidor 
 nunca cruza uma rede. Este runbook sobe as duas, dimensiona o SUT para que a saturação seja
 alcançável e derruba tudo ao final.
 
-Provisione quando a fase de resiliência começa, não quando a campanha de carga começa. O
-tempo de espera das máquinas é a armadilha clássica: descobrir na véspera da entrega que os
-números de loopback não valem e correr atrás de uma segunda máquina.
+Provisione as máquinas antes de precisar delas. O tempo de espera é a armadilha clássica:
+descobrir na véspera que os números de loopback não valem e correr atrás de uma segunda
+máquina.
 
 ## As duas máquinas
 

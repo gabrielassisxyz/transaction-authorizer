@@ -15,8 +15,8 @@ apagar a mensagem, e o que fazer com a que nunca vai ser processada.
 
 A tabela de compatibilidade do Spring Cloud AWS lista a linha 4.x contra Spring Boot
 **4.0.x**. O projeto está em Boot 4.1, então adotá-lo seria apostar em uma combinação
-que o próprio projeto não declara suportar, e o preço de errar é descobrir o problema
-no meio da fatia seguinte. O SDK v2 sozinho tem risco de compatibilidade zero e o que
+que o próprio projeto não declara suportar, e o preço de errar é uma incompatibilidade
+que só aparece depois, já com o consumer em pé. O SDK v2 tem risco zero aí, e o que
 se perde é um poller pronto: cerca de cem linhas, que é justamente onde estão as
 decisões abaixo.
 
@@ -91,9 +91,10 @@ duplicado e crescimento enganoso da DLQ.
   cria. Localmente isso é um serviço one-shot no compose; em produção é
   infraestrutura como código. O ganho é que um nome de fila errado falha alto, em vez
   de produzir uma fila vazia que ninguém lê.
-- A espera antes de nova tentativa é fixa nesta fatia. Sob falha correlacionada, todos
-  os pollers voltam juntos; o *backoff* com full jitter que resolve isso entra na fatia
-  de resiliência.
+- A espera antes de nova tentativa não pode ser fixa: sob falha correlacionada, pollers
+  que falharam juntos voltariam juntos e martelariam a dependência assim que ela volta.
+  Por isso o poller recua com full jitter, dormindo um intervalo aleatório em
+  `[0, min(cap, base * 2^tentativas)]`, com base de 1s e teto de 30s.
 
 ## Alternativas consideradas
 
