@@ -16,7 +16,7 @@ com a saturação registrada: a 98% de ocupação, quadruplicar as conexões de 
 **30% mais vazão e uma cauda 45% menor**, com o host ainda em 35% de CPU ociosa. Conexões
 saturadas trabalham; não disputam.
 
-O limite, portanto, não é uma curva que vira, é **um orçamento que acaba**. O `max_connections`
+O que limita a frota, portanto, é um orçamento finito. O `max_connections`
 do Postgres é finito e compartilhado, é função da memória da classe de instância do RDS, e
 cada task leva o seu pool inteiro para dentro dele. Com `DB_POOL_SIZE=20`, N tasks consomem
 20 × N desse orçamento, e a topologia desenha um balanceador sobre "múltiplas tasks" sem

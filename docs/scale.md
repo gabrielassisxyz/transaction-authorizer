@@ -153,9 +153,10 @@ Particionar distribui contas diferentes. Não faz nada por **uma** conta quente,
 serialização é sobre a linha.
 
 Isso não é hipótese: a campanha mediu. Concentrando o tráfego em 10 contas, o throughput cai
-de 2667 para **1853 req/s** e o p99 sobe de 88 para 222 ms, com 0% de erro. É a contenção do
-lock de linha aparecendo como número. Uma conta quente de verdade, num sistema real, é a conta
-de liquidação de um lojista grande, e ela não é um caso de laboratório.
+dos cerca de 2,7 mil req/s do regime para 1853, e o p99 sobe dos cerca de 90 ms para 222, com
+0% de erro. É a contenção do lock de linha aparecendo como número. Uma conta quente de
+verdade, num sistema real, é a conta de liquidação de um lojista grande, e ela não é um caso
+de laboratório.
 
 As saídas, em ordem de custo:
 
