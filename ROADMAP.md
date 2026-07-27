@@ -39,8 +39,41 @@ Direções que o desenho atual já comporta e que um horizonte maior justificari
   exigida. Um teste de contrato contra o produtor real da fila e contra os consumidores da
   API travaria o formato antes de uma quebra chegar a produção.
 - **Postura multi-região:** o serviço é sem estado, então o que decide a estratégia é o
-  banco. Ativo-passivo com réplica de leitura promovível é o passo natural; ativo-ativo
-  exigiria repensar a serialização do saldo, que hoje é local ao Postgres.
+  banco. Ativo-passivo com réplica promovível é o passo natural, e vale nomear o que ele
+  custa: replicação entre regiões é assíncrona, então promover uma réplica aceita perder as
+  decisões que ainda não haviam replicado. É exatamente o risco que a escolha de Multi-AZ
+  síncrono dentro da região evita, e levá-lo para o desenho multi-região é uma decisão de
+  RPO, não um detalhe de topologia. Ativo-ativo exigiria repensar a serialização do saldo,
+  que hoje é local ao Postgres.
+
+### Capacidade e escala
+
+O desenho de frota está em [`docs/scale.md`](docs/scale.md); o que segue é o que ele aponta
+e não foi construído, na ordem em que a medição justifica.
+
+- **Pooler de conexões entre as instâncias e o banco:** é o próximo teto real, não uma
+  otimização. A varredura em `docs/load/` mostra o throughput regredindo acima de 40
+  conexões concorrentes, e cada instância abre 20, então a partir da quarta o serviço fica
+  mais lento quanto mais instâncias tem. Um pooler em transaction mode desacopla número de
+  instâncias de número de conexões, que é o que permite ter disponibilidade e throughput ao
+  mesmo tempo em vez de escolher entre os dois.
+- **Dois pools, um por via:** a autorização e o consumer SQS dividem o mesmo pool hoje, então
+  um redrive grande consome conexão de quem tem cliente esperando. Separar move a fila para
+  o lado do trabalho assíncrono, que é onde ela deve ficar.
+- **Controle de admissão:** um limite de concorrência em voo devolvendo 503 antes de o pool
+  esgotar. Não foi implementado porque muda o comportamento no cenário de surto que a
+  campanha mede a 0% de erro, e um limite mal calibrado transforma em erro um pico hoje
+  absorvido. Entra junto de uma campanha que o valide, não antes.
+- **Particionamento por conta:** a invariante de saldo é local a uma linha, então
+  `account_id` é chave de partição natural e não existe transação entre partições. É o
+  caminho para uma ordem de grandeza acima do teto de um banco, e a decisão que o comprou
+  foi tomada por correção, não por escala.
+- **Conta quente:** particionar não ajuda uma única conta concentrada, e a campanha mede a
+  queda. As saídas são netting em janela ou um escritor único por conta; o gatilho para
+  decidir é a conta quente sozinha passar do que uma linha aguenta.
+- **`Retry-After` calibrado contra um failover real:** o valor atual foi derivado de derrubar
+  um contêiner, que falha instantâneo. A janela de uma promoção Multi-AZ é muito maior, e um
+  cliente que respeita o header reenviaria durante toda ela.
 
 ## Fora de escopo
 

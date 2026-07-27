@@ -1,0 +1,175 @@
+# Kubernetes nao e o alvo de implantacao deste servico: o ADR-009 escolhe ECS Fargate e
+# argumenta por que. Este manifesto existe para tornar verificavel a afirmacao central
+# daquele ADR, a de que a escolha e reversivel porque nada no codigo conhece o orquestrador.
+# Cada peca abaixo e a traducao direta de algo que ja existe, e a ausencia mais importante
+# aqui e deliberada: nao ha HorizontalPodAutoscaler.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: authorizer-config
+  labels:
+    app: authorizer
+data:
+  # 12-factor: a mesma imagem sobe em qualquer ambiente e so a configuracao muda.
+  DB_URL: jdbc:postgresql://postgres:5432/transaction_authorizer
+  # O pool por replica e a unidade da aritmetica de frota em docs/scale.md. Alterar este
+  # numero muda quantas replicas o banco suporta, entao ele nao e um ajuste local.
+  DB_POOL_SIZE: "20"
+  # Piso necessario para o breaker aprender com chamadas que terminam (ADR-008).
+  DB_CONNECTION_TIMEOUT_MS: "3000"
+  AWS_REGION: sa-east-1
+  SQS_QUEUE_NAME: conta-bancaria-criada
+  SQS_POLLERS: "2"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authorizer
+  labels:
+    app: authorizer
+spec:
+  # Duas replicas por disponibilidade e para o rollout em degraus ter duas versoes servindo,
+  # nao por throughput: a curva medida em docs/load/results.md mostra o joelho do banco entre
+  # 20 e 40 conexoes concorrentes, e duas replicas de pool 20 ja o alcancam.
+  replicas: 2
+  selector:
+    matchLabels:
+      app: authorizer
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Nunca mais de tres replicas simultaneas durante o rollout, ou seja, no maximo 60
+      # conexoes contra o banco na janela de troca. maxSurge maior atravessaria o joelho
+      # exatamente durante um deploy, que e o pior momento para degradar.
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: authorizer
+    spec:
+      # Uma replica por zona, que e o mesmo desenho da topologia em docs/deploy.md.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: authorizer
+      containers:
+        - name: authorizer
+          image: transaction-authorizer:scale-verify
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: authorizer-config
+          env:
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: authorizer-secrets
+                  key: db-username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: authorizer-secrets
+                  key: db-password
+          resources:
+            requests:
+              # A concorrencia e limitada pelo pool de conexoes, nao pela CPU (ADR-009), entao
+              # a CPU e dimensionada para atender o pool e nao para ser o eixo de escala.
+              cpu: 500m
+              memory: 768Mi
+            limits:
+              memory: 768Mi
+          # Os dois probes sao a traducao um a um dos grupos de health que ja existem em
+          # application.yaml, e a separacao entre eles existe pelo mesmo motivo aqui e no ECS:
+          # liveness nao carrega dependencia, entao o banco cair nunca reinicia o processo e
+          # transforma uma queda de dependencia em cascata de reinicios.
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          # Readiness segue o banco: sem banco, sem autorizacao, tira a replica de rotacao.
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 3
+          # A partida faz migracao Flyway antes de servir, entao o gate de inicializacao e
+          # separado do de readiness para nao contar a migracao como falha.
+          startupProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          securityContext:
+            runAsNonRoot: true
+            # O UID precisa ser numerico. O Dockerfile declara `USER app`, e um nome nao
+            # serve: o kubelet resolve o usuario antes de existir container onde resolver o
+            # nome, entao com runAsNonRoot ligado ele recusa a imagem por nao conseguir
+            # provar que o usuario nao e root. 999 e o uid que o useradd --system atribui.
+            runAsUser: 999
+            runAsGroup: 999
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # Com raiz somente leitura, o Tomcat embutido ainda precisa de um diretorio
+            # temporario para escrever. Sem isto o processo nao sobe.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      # O desligamento gracioso espera as mensagens SQS em voo terminarem, e o timeout aqui
+      # precisa ultrapassar o long poll de 20s para nao abandonar mensagem recebida e ainda
+      # nao commitada (docs/failure-modes.md).
+      terminationGracePeriodSeconds: 45
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: authorizer
+  labels:
+    app: authorizer
+spec:
+  type: ClusterIP
+  selector:
+    app: authorizer
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: authorizer
+spec:
+  # Uma replica sempre servindo durante manutencao de no. Com duas replicas isso limita a
+  # evicao a uma por vez, que e o comportamento desejado: a outra sustenta o trafego.
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: authorizer
+# Ausencia deliberada: nenhum HorizontalPodAutoscaler.
+#
+# O default de qualquer plataforma e escalar por CPU, e aqui isso escalaria para dentro do
+# problema. A fila esta no pool de conexoes, nao no processador: sob carga, a CPU sobe, o
+# autoscaler cria replicas, cada replica abre mais 20 conexoes contra o mesmo banco, e a
+# varredura em docs/load/results.md mostra o throughput caindo de 2769 para 2217 req/s ao
+# passar de 40 para 80 conexoes concorrentes. O autoscaling seria o incidente.
+#
+# Enquanto nao houver um pooler entre as replicas e o banco (docs/scale.md), a politica
+# correta e teto fixo. Com pooler, o eixo de escala passa a ser a saturacao do pool, e um
+# HPA sobre essa metrica passa a fazer sentido.

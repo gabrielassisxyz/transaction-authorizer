@@ -165,3 +165,4 @@ As referências que embasam o desenho e o artefato concreto onde cada uma se mat
 - `docs/failure-modes.md`: por componente, o que acontece quando ele falha.
 - `docs/deploy.md`: topologia de deploy em cloud pública e proposta de pipeline.
 - `docs/load/`: prova de carga com k6, método, cenários e resultados.
+- `docs/scale.md`: capacidade da frota, o teto de conexões e o que muda a 10x e a 100x.
