@@ -26,6 +26,12 @@ psql_one() {
 
 app_state() { docker compose ps app --format '{{.State}}' 2>/dev/null; }
 
+# grep -c, never grep -q: -q exits at the first match, which kills `docker compose logs`
+# with SIGPIPE, and under `set -o pipefail` that turns a found line into a failed check.
+# It is a race against how fast the log is written, so it fails intermittently on a match
+# that is really there.
+app_logged() { docker compose logs app 2>/dev/null | grep -c -- "$1" >/dev/null; }
+
 dlq_depth() {
     local url
     url=$(docker compose exec -T localstack \
@@ -74,7 +80,7 @@ echo "==> the consumer must survive and back off"
 backoff=""
 for _ in $(seq 1 40); do
     [ "$(app_state)" = "running" ] || fail "app exited during the Postgres outage"
-    if docker compose logs app 2>/dev/null | grep -q "backing off"; then
+    if app_logged "backing off"; then
         backoff=1
         break
     fi
