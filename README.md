@@ -147,26 +147,26 @@ credita e debita uma conta semeada, confere a recusa por saldo, o replay idempot
 rodado localmente antes de uma entrega. Não integra o `bin/ci` porque sobe containers e a
 semente de 100 mil mensagens.
 
-## Referências e onde elas aparecem no código
+## Decisões e onde lê-las
 
-As referências que embasam o desenho e o artefato concreto onde cada uma se materializa:
+Quatro decisões sustentam o desenho e são as que um leitor pode querer contestar. Cada uma
+está argumentada por escrito, com as alternativas que foram pesadas e recusadas.
 
-| Referência | Onde se materializa |
+| Decisão | Onde está |
 |---|---|
-| DDIA, CAP: postura CP na autorização | ADR-007, a escolha do armazenamento e o comportamento sob partição; ADR-002, o update condicional atômico do saldo |
-| Arquitetura hexagonal | estrutura de pacotes com a direção fixada pela suíte ArchUnit |
-| 12-Factor, SRE | configuração por ambiente, logs JSON no stdout, o par SLI/SLO em `docs/deploy.md` |
-| Padrões de resiliência | full jitter no consumer, dead-letter queue, idempotência e o circuit breaker da autorização (ADR-008), detalhados em `docs/failure-modes.md` |
-| Pirâmide de testes | unitários no domínio, integração com Testcontainers, E2E sobre o compose, uma suíte ArchUnit |
-| OpenAPI, ADR | `docs/openapi.yaml` e `docs/adr/`, escritos junto da mudança que documentam |
+| Livro-razão relacional ACID, e recusar em vez de aprovar um débito que não se consegue verificar sob partição | [ADR-007](docs/adr/007-armazenamento-relacional-acid.md), a escolha do armazenamento; [ADR-002](docs/adr/002-controle-de-concorrencia-do-saldo.md), o update condicional atômico do saldo |
+| Núcleo sem dependência de framework, com a direção fixada por teste e não por convenção | [`HexagonalArchitectureTest`](src/test/kotlin/com/transactionauthorizer/architecture/HexagonalArchitectureTest.kt), que derruba o build se um adaptador inverter a seta |
+| Degradar sob falha de dependência sem nunca corromper o saldo nem perder mensagem válida | [ADR-008](docs/adr/008-circuit-breaker-da-autorizacao.md), o circuit breaker e o timeout que o torna possível; [`docs/failure-modes.md`](docs/failure-modes.md), componente a componente |
+| Frota dimensionada pelo orçamento de conexão do banco, não pela CPU | [ADR-009](docs/adr/009-orquestrador-e-dimensionamento-da-frota.md) e [`docs/scale.md`](docs/scale.md), com a curva medida que sustenta o número |
 
 ## Documentação
 
-- `ROADMAP.md`: direção do projeto.
-- `docs/openapi.yaml`: contrato HTTP da autorização.
-- `docs/http/`: coleção de requisições, formato `.http` e Postman.
-- `docs/adr/`: decisões de arquitetura com motivadores e trade-offs.
-- `docs/failure-modes.md`: por componente, o que acontece quando ele falha.
-- `docs/deploy.md`: topologia de deploy em cloud pública e proposta de pipeline.
-- `docs/load/`: prova de carga com k6, método, cenários e resultados.
-- `docs/scale.md`: capacidade da frota, o teto de conexões e o que muda a 10x e a 100x.
+- [`ROADMAP.md`](ROADMAP.md): o que existe, o que viria a seguir e o que está fora de escopo.
+- [`docs/adr/`](docs/adr/): decisões de arquitetura com motivadores e trade-offs.
+- [`docs/openapi.yaml`](docs/openapi.yaml): contrato HTTP da autorização.
+- [`docs/http/`](docs/http/): coleção de requisições, formato `.http` e Postman.
+- [`docs/failure-modes.md`](docs/failure-modes.md): por componente, o que acontece quando ele falha.
+- [`docs/deploy.md`](docs/deploy.md): topologia de deploy em cloud pública e proposta de pipeline.
+- [`docs/scale.md`](docs/scale.md): capacidade da frota, o teto de conexões e o que muda a 10x e a 100x.
+- [`docs/load/`](docs/load/): prova de carga com k6, método, cenários e resultados.
+- [`deploy/`](deploy/): manifesto Kubernetes e regras de alerta do Prometheus.
