@@ -4,15 +4,22 @@ Status: aceito
 
 ## Contexto
 
-Com o banco fora do ar, o custo não é a requisição que falha, é a requisição que **espera**.
-A configuração anterior não fixava `connectionTimeout`, então valia o padrão de 30s do
-HikariCP, e com threads virtuais ligadas (ADR-001) nada limita quantas requisições chegam:
-não há pool de threads para saturar antes. No throughput medido em `docs/load/`, cerca de
-2,7 mil requisições por segundo, meio minuto de espera significa dezenas de milhares de
-requisições paradas ao mesmo tempo. O teto real deixa de ser o timeout e passa a ser o
-limite de conexões do servidor HTTP, alcançado em segundos, e depois disso a recusa
+O custo de uma dependência doente não é a requisição que falha, é a requisição que
+**espera**. A configuração anterior não fixava `connectionTimeout`, então valia o padrão de
+30s do HikariCP, e com threads virtuais ligadas (ADR-001) nada limita quantas requisições
+chegam: não há pool de threads para saturar antes. No throughput medido em `docs/load/`,
+cerca de 2,7 mil requisições por segundo, meio minuto de espera significa dezenas de
+milhares de requisições paradas ao mesmo tempo. O teto real deixa de ser o timeout e passa
+a ser o limite de conexões do servidor HTTP, alcançado em segundos, e depois disso a recusa
 acontece no TCP, sem resposta nenhuma. "O timeout do pool já limita a espera" é verdade e
 não ajuda: ele limita em trinta segundos.
+
+Vale ser preciso sobre **quando** essa espera acontece, porque nem toda queda a produz. Um
+banco que recusa conexão, o processo parado de forma limpa, falha rápido e nunca chega a
+formar fila. A espera aparece quando a conexão não pode ser **obtida**: pacotes descartados
+entre a aplicação e o banco, um banco sobrecarregado que aceita a conexão e não responde,
+ou o pool inteiro ocupado por consultas lentas. São os modos em que o serviço ainda parece
+vivo por fora, e são exatamente os que o padrão de 30s transformava em acúmulo.
 
 A readiness já cobre parte do problema, mas em outra escala de tempo. Ela é o sinal para o
 balanceador, depende do intervalo da sonda e das falhas consecutivas que a plataforma
@@ -77,9 +84,9 @@ O desenho, ponto a ponto:
 
 ## Consequências
 
-- Sob queda do banco, a resposta é imediata e correta em vez de ser uma espera longa
-  seguida de erro. A quantidade de requisições em voo durante a queda passa a ser limitada
-  pelos 3s do timeout, uma vez, em vez dos 30s anteriores a cada requisição.
+- Sob indisponibilidade do banco, a resposta é imediata e correta em vez de ser uma espera
+  longa seguida de erro. A quantidade de requisições em voo durante a queda passa a ser
+  limitada pelos 3s do timeout, uma vez, em vez dos 30s anteriores a cada requisição.
 - Um pico legítimo continua sendo absorvido: nada no caminho quente muda enquanto o breaker
   está fechado, e o custo por chamada é um contador em memória.
 - O estado é observável: cada transição vai para o log como evento operacional e o gauge
@@ -89,7 +96,10 @@ O desenho, ponto a ponto:
   degradação deliberada e limitada: trinta segundos de espera não são uma fila, são um
   acúmulo, e o cliente que espera trinta segundos já desistiu.
 - `bin/chaos` deixa de provar só a resiliência do consumer e passa a provar também a da via
-  HTTP, derrubando o banco e afirmando o 503 rápido.
+  HTTP: derruba o banco, afirma o 503 em menos de um segundo e afirma que o breaker de fato
+  abriu, porque um contêiner parado recusa conexão na hora e sem essa segunda asserção o
+  roteiro passaria mesmo com o breaker desligado. O modo que ele **não** reproduz é o da
+  conexão que trava, que exigiria descartar pacotes em vez de parar o processo.
 
 ## Alternativas consideradas
 
