@@ -103,12 +103,18 @@ done
 # A non-zero curl here is not the verdict; the timed request below is.
 wait || true
 
-read -r code elapsed < <(authorize '%{http_code} %{time_total}')
+# Read from a here-string, not from the command directly: curl's write-out ends without a
+# newline, and `read` reports failure at EOF even after assigning, which under `set -e`
+# kills the script before it can assert anything.
+measured=$(authorize '%{http_code} %{time_total}')
+read -r code elapsed <<<"$measured"
 [ "$code" = "503" ] || fail "expected 503 while the database was down, got $code"
 # The number that matters: with the breaker open the call never reaches the pool, so the
 # answer comes back immediately instead of after the connection timeout.
 awk -v t="$elapsed" 'BEGIN { exit !(t < 1.0) }' ||
     fail "the 503 took ${elapsed}s, which means the request still waited on the pool"
+app_logged "circuit breaker moved to OPEN" ||
+    fail "the breaker never opened, so the 503 came from the raw connection failure"
 echo "    503 in ${elapsed}s with the breaker open"
 
 echo "==> restoring Postgres"
