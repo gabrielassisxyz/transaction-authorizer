@@ -3,7 +3,9 @@
 Campanha de carga do autorizador com k6: método, ambiente, cenários e como reproduzir. O
 desafio pressiona volume alto, então a medição é entregável, não item opcional. As regras
 que a mantêm honesta estão declaradas aqui, antes de qualquer número, e os resultados ficam
-em [results.md](results.md).
+em [results.md](results.md). Os dados brutos ficam em [results/](results/), para os
+cenários e a primeira varredura de pool, e em [results2/](results2/), para a varredura
+refeita.
 
 ## Princípios
 

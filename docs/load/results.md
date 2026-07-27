@@ -9,14 +9,17 @@ conta quente responderam todas HTTP 200, incluindo os débitos recusados por sal
 decisão de autorização e não falha. As três corridas por cenário mostram a faixa, não um
 recorte favorável.
 
-As tabelas abaixo são derivadas, não a fonte. Os artefatos que as produzem estão em
-[results/](results/) e permitem refazer qualquer linha sem religar as máquinas:
+As tabelas abaixo são derivadas, não a fonte. Os artefatos que as produzem estão em dois
+diretórios e permitem refazer qualquer linha sem religar as máquinas: [results/](results/)
+guarda os cenários e a primeira varredura de pool, e [results2/](results2/) guarda a
+varredura refeita, cuja leitura está na última seção desta página.
 
 | Artefato | O que é |
 |---|---|
-| `results/k6/*.json` | O sumário do k6 de cada uma das doze corridas, uma por linha de tabela, incluindo as três da varredura de pool |
+| `results/k6/*.json` | O sumário do k6 das doze corridas da primeira etapa: três por cenário e três da primeira varredura de pool |
 | `results/hikari-campaign.csv` | Os gauges do pool por segundo, com epoch, cobrindo regime, pico e conta quente |
 | `results/manifest.csv` | Início, fim e código de saída de cada corrida, que é o que permite recortar o CSV na janela de qualquer cenário |
+| `results2/` | As onze corridas da varredura refeita, com os gauges do pool, a CPU por container e o manifesto próprio. O [README de lá](results2/README.md) descreve cada arquivo |
 
 Uma ressalva de honestidade sobre o que estes números medem: a campanha rodou antes do
 circuit breaker da autorização (ADR-008) entrar no caminho, e não foi refeita depois. O que
@@ -145,6 +148,10 @@ com o que a medição corrigida mostra. O parágrafo seguinte é o que sobrevive
 | 40 | 2769 | 55 |
 | 80 | 2217 | 46 |
 
+A linha de 20 não tem corrida própria: é a média das três corridas de regime, que rodaram
+nesse mesmo tamanho de pool e sob a mesma carga oferecida. As outras três têm cada uma o
+seu `results/k6/sweep-pool*.json`.
+
 Em 10 o pool estrangula, e isso se sustenta: um terço menos throughput, o banco ocioso
 esperando conexão que não existe. Os demais pontos não medem o que a tabela sugere.
 
@@ -171,7 +178,8 @@ conexões pioram" era o livro-razão engordando.
 A refação corrige as duas coisas: carga oferecida constante em 160 VUs em todos os pontos,
 para que o pool seja o limitante em qualquer tamanho, ordem não monotônica, e um ponto de
 controle em pool 20 repetido seis vezes ao longo da campanha para transformar o drift de
-confundidor invisível em quantidade medida.
+confundidor invisível em quantidade medida. Os dados brutos das onze corridas estão em
+[results2/](results2/), com o manifesto que permite recortar as séries por janela.
 
 ### Mais conexões não reduzem vazão
 
