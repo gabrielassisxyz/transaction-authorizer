@@ -30,10 +30,10 @@ groups:
 
   - name: capacidade
     rules:
-      # O alerta que existe por causa da aritmetica de frota em docs/scale.md. Fila no pool
-      # nao e um pico passageiro quando persiste: e a frota encostando no teto de conexoes
-      # do banco, e a reacao correta e o oposto da intuicao, porque subir tasks aumenta o
-      # total de conexoes e a curva medida regride depois do joelho.
+      # Fila no pool sustentada e o sinal de que a instancia esta no seu limite de
+      # concorrencia, e a medicao em docs/load/results.md mostra que o host ainda tem CPU
+      # sobrando quando isso acontece: a espera esta no pool, entao nenhuma metrica de
+      # processador ve este limite.
       - alert: FilaNoPoolSustentada
         expr: hikaricp_connections_pending > 0
         for: 10m
@@ -42,21 +42,10 @@ groups:
         annotations:
           summary: "requisicoes esperando conexao ha 10 minutos"
           description: >
-            {{ $value }} requisicoes na fila do pool. Nao suba tasks: cada task adiciona 20
-            conexoes ao mesmo banco e a curva em docs/load/results.md regride acima do
-            joelho. Avalie o pooler de conexoes antes de aumentar a frota.
-
-      - alert: FrotaAcimaDoJoelhoMedido
-        expr: frota:conexoes_totais:sum > 40
-        for: 15m
-        labels:
-          severity: warning
-        annotations:
-          summary: "conexoes da frota acima do joelho medido"
-          description: >
-            {{ $value }} conexoes somadas contra o banco. A varredura em
-            docs/load/results.md mede queda de throughput acima de 40 conexoes
-            concorrentes. Acima daqui, mais tasks entregam menos.
+            {{ $value }} requisicoes na fila do pool. Conexoes a mais entregam mais vazao e
+            cauda menor, entao aumentar pool ou frota ajuda, desde que o total contra o banco
+            caiba no max_connections. Confira o orcamento de conexao antes de subir qualquer
+            um dos dois.
 
   - name: dependencias
     rules:
@@ -82,6 +71,23 @@ groups:
             A via HTTP segue sa: a readiness nao acompanha a fila de proposito, entao o
             autorizador continua em rotacao enquanto o consumo espera.
 
+      # A mensagem que se perde nao e a veneno, e a valida. Corpo que nao parseia sobe o
+      # contador de poison e o alerta abaixo pega; uma conta legitima cujo banco estava fora
+      # do ar sobe `failed`, volta pela fila, e some para a dead-letter queue quando o
+      # orcamento de recebimento acaba, sem que nada mais dispare. Este contador ja existia
+      # no codigo e nao era lido por regra nenhuma.
+      - alert: FalhasTransitoriasNoConsumo
+        expr: increase(sqs_messages_total{outcome="failed"}[10m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "mensagens de criacao de conta falhando ha 10 minutos"
+          description: >
+            {{ $value }} falhas transitorias na janela. A mensagem volta pela fila, mas o
+            orcamento antes da dead-letter queue e de cerca de dois minutos de
+            indisponibilidade, entao uma queda mais longa manda conta valida para la.
+
       - alert: MensagensVenenoCrescendo
         expr: increase(sqs_messages_total{outcome="poison"}[15m]) > 0
         labels:
@@ -91,3 +97,14 @@ groups:
           description: >
             Corpo que nao parseia chegou ao orcamento de retentativa. A dead-letter queue e
             ponto de parada para decisao humana, nao caminho de retentativa automatica.
+
+# O que estas regras NAO cobrem, e por que.
+#
+# Profundidade da fila, idade da mensagem mais antiga e profundidade da dead-letter queue
+# sao as tres series que diriam se o consumo esta acompanhando a producao. Nenhuma delas
+# vem da aplicacao: sao metricas do proprio SQS, publicadas no CloudWatch, e chegariam aqui
+# por um exporter. Enquanto ele nao existir, o sinal disponivel e indireto, o contador de
+# falhas acima, e um backlog crescente com consumo saudavel passaria despercebido.
+#
+# Fica registrado como lacuna em vez de silenciado, porque para a via de criacao de contas
+# essa e a diferenca entre saber e nao saber que uma conta legitima se perdeu.

@@ -29,9 +29,9 @@ metadata:
   labels:
     app: authorizer
 spec:
-  # Duas replicas por disponibilidade e para o rollout em degraus ter duas versoes servindo,
-  # nao por throughput: a curva medida em docs/load/results.md mostra o joelho do banco entre
-  # 20 e 40 conexoes concorrentes, e duas replicas de pool 20 ja o alcancam.
+  # Duas replicas por disponibilidade e para o rollout em degraus ter duas versoes servindo.
+  # Vazao tambem se ganha com mais replicas, mas o teto e o orcamento de conexao do banco:
+  # cada replica leva o seu pool inteiro para dentro do max_connections (docs/scale.md).
   replicas: 2
   selector:
     matchLabels:
@@ -40,8 +40,8 @@ spec:
     type: RollingUpdate
     rollingUpdate:
       # Nunca mais de tres replicas simultaneas durante o rollout, ou seja, no maximo 60
-      # conexoes contra o banco na janela de troca. maxSurge maior atravessaria o joelho
-      # exatamente durante um deploy, que e o pior momento para degradar.
+      # conexoes contra o banco na janela de troca. O deploy e justamente quando o consumo de
+      # conexao pico acontece sem ninguem esperar por ele, entao o surge fica limitado.
       maxSurge: 1
       maxUnavailable: 0
   template:
@@ -164,12 +164,13 @@ spec:
       app: authorizer
 # Ausencia deliberada: nenhum HorizontalPodAutoscaler.
 #
-# O default de qualquer plataforma e escalar por CPU, e aqui isso escalaria para dentro do
-# problema. A fila esta no pool de conexoes, nao no processador: sob carga, a CPU sobe, o
-# autoscaler cria replicas, cada replica abre mais 20 conexoes contra o mesmo banco, e a
-# varredura em docs/load/results.md mostra o throughput caindo de 2769 para 2217 req/s ao
-# passar de 40 para 80 conexoes concorrentes. O autoscaling seria o incidente.
+# O default de qualquer plataforma e escalar por CPU, e aqui essa metrica e cega para o
+# limite que importa. A medicao em docs/load/results.md registra o pool a 98% de ocupacao com
+# 134 requisicoes na fila enquanto o host mantinha 48% de CPU ociosa: a espera esta no pool,
+# nao no processador, entao um HPA por CPU nao reage quando o servico ja esta no limite.
 #
-# Enquanto nao houver um pooler entre as replicas e o banco (docs/scale.md), a politica
-# correta e teto fixo. Com pooler, o eixo de escala passa a ser a saturacao do pool, e um
-# HPA sobre essa metrica passa a fazer sentido.
+# O teto tambem nao e de vazao, e de orcamento: cada replica leva o seu pool inteiro para
+# dentro do max_connections do banco, que e finito e compartilhado. Enquanto nao houver um
+# pooler entre as replicas e o banco, a politica correta e teto fixo declarado. Com pooler, o
+# eixo de escala passa a ser a saturacao do pool, e um HPA sobre essa metrica passa a fazer
+# sentido.

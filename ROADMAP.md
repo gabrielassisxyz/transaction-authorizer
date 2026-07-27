@@ -24,7 +24,12 @@ Direção do projeto: o que existe, o que vem a seguir e o que fica fora de esco
   por componente, diagrama de deploy em cloud pública e proposta de pipeline canário.
 - **Prova de carga:** campanha k6 com gerador e SUT em máquinas isoladas, três corridas
   por cenário. Regime, pico e concentração em conta quente medidos em `docs/load/`, com a
-  curva de saturação do pool e o tamanho do pool confirmado por varredura.
+  curva de saturação do pool.
+- **Varredura de pool refeita:** a primeira variou o tamanho do pool mantendo a carga
+  oferecida fixa, então nos pontos maiores o pool nunca era o limitante e a curva não media o
+  que a leitura dela supunha. A refação fixa a carga em 160 VUs, embaralha a ordem e repete um
+  controle seis vezes. Resultado em `docs/load/results2/`: conexões saturadas entregam mais
+  vazão e cauda menor até 80, e o teto real cai pela metade conforme o livro-razão cresce.
 - **Revisão às cegas:** um par de olhos que não escreveu o código percorreu o repositório
   a partir de um clone limpo, e a janela de correção que ele apontou foi aplicada.
 
@@ -51,12 +56,19 @@ Direções que o desenho atual já comporta e que um horizonte maior justificari
 O desenho de frota está em [`docs/scale.md`](docs/scale.md); o que segue é o que ele aponta
 e não foi construído, na ordem em que a medição justifica.
 
-- **Pooler de conexões entre as instâncias e o banco:** é o próximo teto real, não uma
-  otimização. A varredura em `docs/load/` mostra o throughput regredindo acima de 40
-  conexões concorrentes, e cada instância abre 20, então a partir da quarta o serviço fica
-  mais lento quanto mais instâncias tem. Um pooler em transaction mode desacopla número de
-  instâncias de número de conexões, que é o que permite ter disponibilidade e throughput ao
-  mesmo tempo em vez de escolher entre os dois.
+- **Retenção e particionamento por tempo do livro-razão:** é o item de maior efeito medido.
+  Seis corridas de configuração idêntica perderam metade da vazão, de 6202 para 3115 req/s,
+  enquanto a base ia de zero a doze milhões de linhas. As duas tabelas de maior escrita são
+  append-only com chave primária aleatória, então cada inserção cai numa folha diferente do
+  índice e o custo cresce com o tamanho da tabela. A saída é particionamento por tempo com
+  arquivamento e uma chave ordenada no tempo; sem isso, qualquer número de capacidade tem
+  prazo de validade e precisa vir acompanhado do tamanho da base em que foi medido.
+- **Pooler de conexões entre as instâncias e o banco:** o `max_connections` do Postgres é
+  finito, é função da memória da classe de instância e é compartilhado por toda a frota, e
+  cada instância leva o seu pool inteiro para dentro dele. Isso prende a contagem de
+  instâncias, que também é decidida por disponibilidade e por deploy, a um recurso do banco.
+  Um pooler em transaction mode desacopla as duas coisas. A conta que falta antes é declarar
+  a classe de instância e, com ela, o orçamento.
 - **Dois pools, um por via:** a autorização e o consumer SQS dividem o mesmo pool hoje, então
   um redrive grande consome conexão de quem tem cliente esperando. Separar move a fila para
   o lado do trabalho assíncrono, que é onde ela deve ficar.
@@ -74,6 +86,38 @@ e não foi construído, na ordem em que a medição justifica.
 - **`Retry-After` calibrado contra um failover real:** o valor atual foi derivado de derrubar
   um contêiner, que falha instantâneo. A janela de uma promoção Multi-AZ é muito maior, e um
   cliente que respeita o header reenviaria durante toda ela.
+- **Teto de ingestão da criação de contas, medido, e uma alavanca para movê-lo:** a campanha
+  de carga isola a via HTTP de propósito, então o consumo da fila não tem número nenhum: nem
+  taxa de drenagem, nem teto. Medir vem primeiro. Depois existem duas alavancas, e elas não
+  são equivalentes. `DeleteMessageBatch` apaga até dez mensagens por chamada, contra a chamada
+  por mensagem de hoje, o que corta uma ordem de grandeza em requisições ao SQS, em latência
+  acumulada e em custo por mensagem; o preço é que o ack deixa de ser individual e passa a
+  exigir tratamento de sucesso parcial, que é justamente a simplicidade que o ADR-005 escolheu
+  ao decidir por ack por mensagem, então trocar exige revisitar aquela decisão e não apenas
+  chamar outra API. A segunda alavanca é separar o consumer num deployable próprio, com
+  orçamento de conexão próprio, o que resolve ao mesmo tempo o bulkhead entre as duas vias e
+  devolve uma escala independente da via HTTP, hoje inexistente porque o consumer roda dentro
+  da mesma instância e disputa o mesmo pool.
+- **Ordem do livro-razão atribuída pelo banco:** o `timestamp` gravado é
+  `clock.instant()` da instância que atendeu, escolhido para tornar os testes determinísticos.
+  Com uma instância isso é irrepreensível; com várias, duas transações na mesma conta podem
+  ficar gravadas fora da ordem real de commit, dentro do desvio de NTP entre as máquinas.
+  Nada no sistema hoje depende dessa ordem, então não é defeito: nenhuma consulta ordena por
+  ela e a invariante de saldo é garantida pelo `UPDATE` condicional, não por tempo. Vira
+  defeito no dia em que alguém precisar reconstruir a sequência de movimentos de uma conta,
+  que é exatamente o que um extrato faz. A saída é uma sequência monotônica do banco ou
+  `clock_timestamp()` como ordem autoritativa, mantendo o relógio injetado só para o eco na
+  resposta.
+- **Calibração do circuit breaker medida, não arbitrada:** a janela é de 20 chamadas com
+  mínimo de 10 e limiar de 50%. No throughput medido, 20 chamadas são cerca de sete
+  milissegundos de tráfego, então um soluço muito curto basta para abrir o circuito e a
+  instância passa a recusar pelos segundos seguintes. O ADR-008 argumenta a direção do falso
+  negativo, reconhecer a dependência morta cedo, e não pesa a do falso positivo. Uma janela
+  por tempo, com mínimo de chamadas proporcional à taxa esperada, faria o limiar ser medido
+  sobre amostra com significado estatístico. O que falta antes de trocar é a medição: a
+  campanha de carga rodou antes de o breaker existir, então não há taxa de abertura falsa sob
+  carga para comparar, e mudar calibração de resiliência sem número é o erro que essa
+  calibração deveria evitar.
 
 ## Fora de escopo
 
