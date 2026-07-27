@@ -41,9 +41,13 @@ class TransactionStoreResilienceConfiguration {
         breaker.eventPublisher.onStateTransition {
             log.warn("authorization circuit breaker moved to {}", it.stateTransition.toState)
         }
+        // Half-open counts as degraded on purpose: during an outage longer than the open
+        // window the breaker cycles open, probes, opens again, and a gauge that only knew
+        // OPEN would flap to zero on every probe, which is the shape of an alert nobody
+        // can trust.
         Gauge
-            .builder("authorizations.circuit.open") { if (breaker.state == CircuitBreaker.State.OPEN) 1.0 else 0.0 }
-            .description("1 while the authorization store circuit breaker is refusing calls")
+            .builder("authorizations.circuit.open") { if (breaker.state == CircuitBreaker.State.CLOSED) 0.0 else 1.0 }
+            .description("1 while the authorization store circuit is open or probing recovery")
             .register(meterRegistry)
         return breaker
     }
