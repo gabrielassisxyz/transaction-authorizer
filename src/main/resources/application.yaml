@@ -61,6 +61,15 @@ management:
     metrics:
       export:
         enabled: true
+  metrics:
+    distribution:
+      # The rollout gate in docs/deploy.md reverts a step on p99 latency, and the HTTP timer
+      # ships only a count and a sum by default, which yields a mean and never a percentile.
+      # Buckets rather than client-side percentiles: a quantile computed inside one instance
+      # cannot be averaged across a fleet, while buckets add up and let the query engine
+      # derive the percentile over all of them.
+      percentiles-histogram:
+        http.server.requests: true
 
 sqs:
   region: ${AWS_REGION:sa-east-1}
