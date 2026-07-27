@@ -11,7 +11,7 @@ cd "$(dirname "$0")/.."
 APP="${APP_BASE_URL:-http://localhost:8080}"
 SLEEP=5
 
-cleanup() { docker compose --profile app down -v >/dev/null 2>&1 || true; }
+cleanup() { docker compose down -v >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 fail() {
@@ -44,8 +44,8 @@ dlq_depth() {
 }
 
 echo "==> bringing the system up from scratch"
-docker compose --profile app down -v >/dev/null 2>&1 || true
-docker compose --profile app up -d --build
+docker compose down -v >/dev/null 2>&1 || true
+docker compose up -d --build
 
 echo "==> waiting for app readiness"
 ready=""
