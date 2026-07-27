@@ -33,6 +33,12 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/AuthorizeTransactionRequest'
+            example:
+              account_id: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+              type: CREDIT
+              amount:
+                value: 100.00
+                currency: BRL
       responses:
         '200':
           description: >
@@ -42,61 +48,91 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthorizeTransactionResponse'
+              example:
+                transaction:
+                  id: 11111111-1111-1111-1111-111111111111
+                  type: CREDIT
+                  amount:
+                    value: 100.00
+                    currency: BRL
+                  status: SUCCEEDED
+                  timestamp: '2026-01-15T10:30:00Z'
+                account:
+                  id: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+                  balance:
+                    value: 100.00
+                    currency: BRL
         '400':
-          description: >
-            Requisição malformada: JSON inválido, campo ausente, transactionId que não é
-            UUID, valor com mais de duas casas decimais ou valor não positivo.
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/Problem'
+          $ref: '#/components/responses/MalformedRequest'
         '404':
-          description: A conta informada não existe.
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/Problem'
+          $ref: '#/components/responses/AccountNotFound'
         '422':
-          description: >
-            Requisição bem formada mas não processável: moeda diferente de BRL ou valor
-            fora da faixa representável do livro-razão.
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/Problem'
+          $ref: '#/components/responses/UnprocessableRequest'
         '503':
-          description: >
-            O serviço não conseguiu alcançar o armazenamento e por isso não decidiu nada
-            sobre esta transação. Não é uma recusa: nenhuma transação foi persistida e o
-            saldo não mudou, então reenviar o mesmo transactionId depois da janela é
-            seguro. O cabeçalho Retry-After diz quanto esperar.
-          headers:
-            Retry-After:
-              description: Segundos a esperar antes de reenviar.
-              schema:
-                type: integer
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/Problem'
+          $ref: '#/components/responses/StorageUnreachable'
         '405':
-          description: >
-            Método diferente de POST no mesmo caminho. Cai no tratamento padrão do Spring
-            Boot, não no handler RFC 9457 dos demais erros: corpo application/json, não
-            application/problem+json.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DefaultError'
+          $ref: '#/components/responses/MethodNotSupported'
         '415':
-          description: >
-            Content-Type diferente de application/json. Mesmo tratamento padrão do 405,
-            pelo mesmo motivo: a requisição nunca chega ao controller.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DefaultError'
+          $ref: '#/components/responses/MediaTypeNotSupported'
 components:
+  # Cada desfecho de erro é declarado uma vez e referenciado pela operação: o corpo
+  # application/problem+json era repetido em quatro respostas, e a repetição é o que faz
+  # uma delas divergir das outras quando o formato de erro mudar.
+  responses:
+    MalformedRequest:
+      description: >
+        Requisição malformada: JSON inválido, campo ausente, transactionId que não é
+        UUID, valor com mais de duas casas decimais ou valor não positivo.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    AccountNotFound:
+      description: A conta informada não existe.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    UnprocessableRequest:
+      description: >
+        Requisição bem formada mas não processável: moeda diferente de BRL ou valor
+        fora da faixa representável do livro-razão.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    StorageUnreachable:
+      description: >
+        O serviço não conseguiu alcançar o armazenamento e por isso não decidiu nada
+        sobre esta transação. Não é uma recusa: nenhuma transação foi persistida e o
+        saldo não mudou, então reenviar o mesmo transactionId depois da janela é
+        seguro. O cabeçalho Retry-After diz quanto esperar.
+      headers:
+        Retry-After:
+          description: Segundos a esperar antes de reenviar.
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    MethodNotSupported:
+      description: >
+        Método diferente de POST no mesmo caminho. Cai no tratamento padrão do Spring
+        Boot, não no handler RFC 9457 dos demais erros: corpo application/json, não
+        application/problem+json.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DefaultError'
+    MediaTypeNotSupported:
+      description: >
+        Content-Type diferente de application/json. Mesmo tratamento padrão do 405,
+        pelo mesmo motivo: a requisição nunca chega ao controller.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DefaultError'
   schemas:
     AuthorizeTransactionRequest:
       type: object
@@ -165,6 +201,10 @@ components:
         Corpo de erro conforme RFC 9457, produzido pelo handler da aplicação. O membro
         type do RFC não aparece: a aplicação nunca customiza esse campo, e o Spring omite
         o valor padrão about:blank da serialização.
+      # O RFC não obriga nenhum membro, mas o handler sempre preenche estes três, e um
+      # cliente que trate erro pode contar com eles. instance fica de fora porque depende
+      # do caminho que gerou o erro.
+      required: [title, status, detail]
       properties:
         title:
           type: string
