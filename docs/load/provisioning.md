@@ -42,9 +42,9 @@ própria stack do compose:
    APP_BIND=0.0.0.0 docker compose up -d --build
    ```
 
-   O app fica atrás do profile `app`, então sem ele a stack sobe Postgres, localstack e o
-   gerador mas nenhum consumer, e a semente ficaria parada na fila. Com o profile, sobe
-   também o autorizador conteinerizado, que é o próprio SUT da campanha.
+   O comando sobe o sistema inteiro, incluindo o autorizador conteinerizado, que é o
+   próprio SUT da campanha. É a mesma imagem que a campanha mede e que iria para um
+   registro.
 
    `APP_BIND` é o que torna a campanha possível. O compose publica a porta em `127.0.0.1`
    por padrão, para que uma máquina de desenvolvimento não coloque o autorizador na rede

@@ -141,7 +141,7 @@ bin/e2e   # smoke de ponta a ponta sobre o sistema conteinerizado (Docker, curl 
 bin/chaos # derruba o Postgres e prova a resiliência das duas vias (Docker, curl, uuidgen)
 ```
 
-`bin/e2e` sobe o sistema inteiro com o profile `app`, espera a semente e a readiness,
+`bin/e2e` sobe o sistema inteiro do zero, espera a semente e a readiness,
 credita e debita uma conta semeada, confere a recusa por saldo, o replay idempotente e o
 404, e derruba tudo ao final. É o ensaio do primeiro contato de quem chega pelo README,
 rodado localmente antes de uma entrega. Não integra o `bin/ci` porque sobe containers e a
