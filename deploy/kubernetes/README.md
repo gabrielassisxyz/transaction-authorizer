@@ -31,8 +31,8 @@ aqui, então o SQS fica inalcançável de propósito.
 
 ```
 NAME                          READY   STATUS    RESTARTS   AGE
-authorizer-67cf7c4dd9-7h8vh   1/1     Running   0          6s
-authorizer-67cf7c4dd9-pm9mx   1/1     Running   0          13s
+authorizer-67cf7c4dd9-bdgb5   1/1     Running   0          12s
+authorizer-67cf7c4dd9-prhl8   1/1     Running   0          12s
 ```
 
 Com a fila fora do ar, os três endpoints respondem assim:
@@ -52,7 +52,7 @@ O `/actuator/info` responde a revisão que está atendendo, que é o que um roll
 precisa para atribuir um sinal ruim à versão certa:
 
 ```
-{"build":{"artifact":"transaction-authorizer","version":"0.0.1-SNAPSHOT","time":"..."}}
+{"build":{"artifact":"transaction-authorizer","version":"0.1.0","time":"..."}}
 ```
 
 ## O defeito que a aplicação revelou
