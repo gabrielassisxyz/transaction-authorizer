@@ -82,6 +82,23 @@ groups:
             A via HTTP segue sa: a readiness nao acompanha a fila de proposito, entao o
             autorizador continua em rotacao enquanto o consumo espera.
 
+      # A mensagem que se perde nao e a veneno, e a valida. Corpo que nao parseia sobe o
+      # contador de poison e o alerta abaixo pega; uma conta legitima cujo banco estava fora
+      # do ar sobe `failed`, volta pela fila, e some para a dead-letter queue quando o
+      # orcamento de recebimento acaba, sem que nada mais dispare. Este contador ja existia
+      # no codigo e nao era lido por regra nenhuma.
+      - alert: FalhasTransitoriasNoConsumo
+        expr: increase(sqs_messages_total{outcome="failed"}[10m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "mensagens de criacao de conta falhando ha 10 minutos"
+          description: >
+            {{ $value }} falhas transitorias na janela. A mensagem volta pela fila, mas o
+            orcamento antes da dead-letter queue e de cerca de dois minutos de
+            indisponibilidade, entao uma queda mais longa manda conta valida para la.
+
       - alert: MensagensVenenoCrescendo
         expr: increase(sqs_messages_total{outcome="poison"}[15m]) > 0
         labels:
@@ -91,3 +108,14 @@ groups:
           description: >
             Corpo que nao parseia chegou ao orcamento de retentativa. A dead-letter queue e
             ponto de parada para decisao humana, nao caminho de retentativa automatica.
+
+# O que estas regras NAO cobrem, e por que.
+#
+# Profundidade da fila, idade da mensagem mais antiga e profundidade da dead-letter queue
+# sao as tres series que diriam se o consumo esta acompanhando a producao. Nenhuma delas
+# vem da aplicacao: sao metricas do proprio SQS, publicadas no CloudWatch, e chegariam aqui
+# por um exporter. Enquanto ele nao existir, o sinal disponivel e indireto, o contador de
+# falhas acima, e um backlog crescente com consumo saudavel passaria despercebido.
+#
+# Fica registrado como lacuna em vez de silenciado, porque para a via de criacao de contas
+# essa e a diferenca entre saber e nao saber que uma conta legitima se perdeu.

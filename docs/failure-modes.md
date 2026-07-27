@@ -38,8 +38,14 @@ O Postgres cai ou fica inalcançável.
   transforma uma queda de dependência em cascata de reinícios.
 - **Consumo:** a criação de conta falha ao escrever, o poller trata como transitório e
   não apaga a mensagem. Sem o delete, a mensagem volta pela fila quando a visibilidade
-  expira. O `maxReceiveCount` de 5 é o orçamento que absorve uma queda curta sem mandar
-  mensagem válida para a dead-letter queue.
+  expira. O orçamento antes de a mensagem ir para a dead-letter queue é `maxReceiveCount`
+  vezes `VisibilityTimeout`, cinco recebimentos a trinta segundos, ou seja **da ordem de
+  dois minutos de indisponibilidade**. Vale expressá-lo em tempo e não em contagem, porque
+  é assim que ele se compara com a falha que precisa sobreviver: a janela de um failover de
+  banco entre zonas é da mesma ordem de grandeza (`scale.md`), e nada no repositório mediu
+  qual das duas é maior. Uma queda de banco mais longa que esse orçamento manda para a
+  dead-letter queue uma mensagem **válida**, e não há nada de errado com ela: o
+  `maxReceiveCount` não distingue corpo inválido de banco fora do ar.
 - **Recuperação:** quando o banco volta, o breaker deixa passar algumas requisições de
   prova depois da janela aberta e fecha sozinho se elas funcionam, sem intervenção e sem
   reinício; a readiness fica verde de novo, a instância retorna à rotação e as mensagens

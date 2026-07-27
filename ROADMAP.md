@@ -74,6 +74,26 @@ e não foi construído, na ordem em que a medição justifica.
 - **`Retry-After` calibrado contra um failover real:** o valor atual foi derivado de derrubar
   um contêiner, que falha instantâneo. A janela de uma promoção Multi-AZ é muito maior, e um
   cliente que respeita o header reenviaria durante toda ela.
+- **Ordem do livro-razão atribuída pelo banco:** o `timestamp` gravado é
+  `clock.instant()` da instância que atendeu, escolhido para tornar os testes determinísticos.
+  Com uma instância isso é irrepreensível; com várias, duas transações na mesma conta podem
+  ficar gravadas fora da ordem real de commit, dentro do desvio de NTP entre as máquinas.
+  Nada no sistema hoje depende dessa ordem, então não é defeito: nenhuma consulta ordena por
+  ela e a invariante de saldo é garantida pelo `UPDATE` condicional, não por tempo. Vira
+  defeito no dia em que alguém precisar reconstruir a sequência de movimentos de uma conta,
+  que é exatamente o que um extrato faz. A saída é uma sequência monotônica do banco ou
+  `clock_timestamp()` como ordem autoritativa, mantendo o relógio injetado só para o eco na
+  resposta.
+- **Calibração do circuit breaker medida, não arbitrada:** a janela é de 20 chamadas com
+  mínimo de 10 e limiar de 50%. No throughput medido, 20 chamadas são cerca de sete
+  milissegundos de tráfego, então um soluço muito curto basta para abrir o circuito e a
+  instância passa a recusar pelos segundos seguintes. O ADR-008 argumenta a direção do falso
+  negativo, reconhecer a dependência morta cedo, e não pesa a do falso positivo. Uma janela
+  por tempo, com mínimo de chamadas proporcional à taxa esperada, faria o limiar ser medido
+  sobre amostra com significado estatístico. O que falta antes de trocar é a medição: a
+  campanha de carga rodou antes de o breaker existir, então não há taxa de abertura falsa sob
+  carga para comparar, e mudar calibração de resiliência sem número é o erro que essa
+  calibração deveria evitar.
 
 ## Fora de escopo
 
