@@ -24,7 +24,7 @@ A fila fica inalcançável (rede, credencial, indisponibilidade do serviço).
 O Postgres cai ou fica inalcançável.
 
 - **Via HTTP, no instante da queda:** cada requisição espera no máximo 3s por uma conexão
-  e recebe **503 com `Retry-After`**, nunca uma recusa. O circuit breaker que envolve a
+  e recebe 503 com `Retry-After`, nunca uma recusa. O circuit breaker que envolve a
   porta de autorização abre depois das primeiras falhas de infraestrutura e, a partir daí,
   as requisições falham em microssegundos, sem ocupar conexão nem thread. É o que impede
   que o serviço acumule requisições paradas enquanto o sinal mais lento abaixo não chega
@@ -39,19 +39,18 @@ O Postgres cai ou fica inalcançável.
 - **Consumo:** a criação de conta falha ao escrever, o poller trata como transitório e
   não apaga a mensagem. Sem o delete, a mensagem volta pela fila quando a visibilidade
   expira. O orçamento antes de a mensagem ir para a dead-letter queue é `maxReceiveCount`
-  vezes `VisibilityTimeout`, cinco recebimentos a trinta segundos, ou seja **da ordem de
-  dois minutos de indisponibilidade**. Vale expressá-lo em tempo e não em contagem, porque
+  vezes `VisibilityTimeout`, cinco recebimentos a trinta segundos, ou seja da ordem de
+  dois minutos de indisponibilidade. Vale expressá-lo em tempo e não em contagem, porque
   é assim que ele se compara com a falha que precisa sobreviver: a janela de um failover de
   banco entre zonas é da mesma ordem de grandeza (`scale.md`), e nada no repositório mediu
   qual das duas é maior. Uma queda de banco mais longa que esse orçamento manda para a
-  dead-letter queue uma mensagem **válida**, e não há nada de errado com ela: o
+  dead-letter queue uma mensagem válida, e não há nada de errado com ela: o
   `maxReceiveCount` não distingue corpo inválido de banco fora do ar.
 - **Recuperação:** quando o banco volta, o breaker deixa passar algumas requisições de
   prova depois da janela aberta e fecha sozinho se elas funcionam, sem intervenção e sem
-  reinício; a readiness fica verde de novo, a instância retorna à rotação e as mensagens
-  redirigidas são consumidas. A criação é idempotente,
-  então uma mensagem que chegou a ser processada antes da falha não cria conta em
-  duplicidade.
+  reinício; a readiness fica verde de novo, a instância retorna à rotação e as mensagens que
+  voltaram para a fila são consumidas. A criação é idempotente, então uma mensagem que
+  chegou a ser processada antes da falha não cria conta em duplicidade.
 
 ## Crescimento da dead-letter queue
 
@@ -67,8 +66,8 @@ para a dead-letter queue.
   de 14 dias, mais longa que os 4 dias da fila principal, porque quem investiga precisa de
   um tempo que a origem já gastou.
 - **Resposta operacional:** inspecionar a mensagem, corrigir a causa (um produtor que
-  emite corpo inválido, um esquema que mudou) e redirigir da dead-letter queue para a
-  principal. Nenhuma correção acontece automaticamente: a dead-letter queue é um ponto de
+  emite corpo inválido, um esquema que mudou) e devolver a mensagem da dead-letter queue
+  para a principal. Nenhuma correção acontece automaticamente: a dead-letter queue é um ponto de
   parada para decisão humana, não um caminho de retentativa.
 
 ## Tempestade de duplicatas

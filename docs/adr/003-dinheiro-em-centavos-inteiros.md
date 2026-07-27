@@ -13,19 +13,19 @@ comparação de saldo em uma armadilha.
 
 ## Decisão
 
-O saldo e os valores trafegam e são armazenados como **centavos inteiros** (`Long`,
+O saldo e os valores trafegam e são armazenados como centavos inteiros (`Long`,
 coluna `BIGINT`). O tipo `Money` do domínio encapsula esse inteiro. `BigDecimal`
 aparece somente na borda HTTP, para converter o decimal do JSON em centavos e de volta;
 nenhuma aritmética de domínio o usa.
 
-A moeda é **BRL apenas**. `Money` não carrega um campo de moeda: a constante
+A moeda é BRL apenas. `Money` não carrega um campo de moeda: a constante
 `Money.CURRENCY` documenta a unidade, a coluna `currency` guarda o valor com um
 `CHECK (currency = 'BRL')`, e a borda HTTP recusa qualquer outra moeda.
 
 ## Por que duas casas decimais, e não mais
 
-Duas casas não é uma simplificação do desafio: é a **unidade mínima do BRL**, e este
-serviço é uma **fronteira de lançamento**, não um motor de cálculo.
+Duas casas é a unidade mínima do BRL, e este serviço é uma fronteira de lançamento, não um
+motor de cálculo.
 
 Valores com precisão sub-centavo existem de verdade num banco: a taxa de câmbio tem
 seis ou mais casas, o rendimento diário de um CDB acumula fração de centavo. Mas eles
@@ -54,7 +54,7 @@ arredondamento no contrato (quem arredonda, em que direção), resposta devolven
 pedido e valor postado separadamente, e uma conta de arredondamento recebendo o resto.
 É um desenho inteiro, não um parâmetro, e nenhuma das três peças tem requisito aqui.
 
-O que a constante `SCALE = 2` de fato esconde é **outra** generalização: a unidade
+O que a constante `SCALE = 2` de fato esconde é outra generalização: a unidade
 mínima é uma propriedade da moeda, não do sistema (JPY tem zero casas, KWD tem três).
 Um autorizador multimoeda troca a constante por uma escala derivada da moeda. É o
 mesmo movimento descrito abaixo para o campo de moeda, e continua fora de escopo pelo
@@ -68,7 +68,7 @@ mesmo motivo.
 - O limite superior passa a ser o de `BIGINT` (cerca de 92 quatrilhões de centavos).
   Não é um limite teórico: um crédito que estoure esse teto é recusado explicitamente,
   em vez de virar saldo negativo por *overflow* silencioso.
-- Valor com mais de duas casas decimais **significativas** na entrada é **recusado**,
+- Valor com mais de duas casas decimais significativas na entrada é recusado,
   não arredondado. Arredondar dinheiro em silêncio absorve um erro de contrato do
   chamador dentro do livro-razão. Zeros à direita não contam: `10.5000` é o mesmo
   dinheiro que `10.50` e é aceito, porque escala de serialização não é precisão.

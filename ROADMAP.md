@@ -30,8 +30,6 @@ Direção do projeto: o que existe, o que vem a seguir e o que fica fora de esco
   que a leitura dela supunha. A refação fixa a carga em 160 VUs, embaralha a ordem e repete um
   controle seis vezes. Resultado em `docs/load/results2/`: conexões saturadas entregam mais
   vazão e cauda menor até 80, e o teto real cai pela metade conforme o livro-razão cresce.
-- **Revisão às cegas:** um par de olhos que não escreveu o código percorreu o repositório
-  a partir de um clone limpo, e a janela de correção que ele apontou foi aplicada.
 
 ## Com mais tempo
 

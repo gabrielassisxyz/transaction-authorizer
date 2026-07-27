@@ -22,8 +22,8 @@ virtuais.
   funciona, e `try`/`catch` e transações do Spring se comportam como qualquer
   desenvolvedor Java espera. Nada de operadores reativos nem de contexto propagado
   manualmente.
-- O limitador de concorrência deixa de ser o pool de threads e passa a ser o **pool de
-  conexões** (HikariCP). Isso é uma mudança real de comportamento sob carga: a fila
+- O limitador de concorrência deixa de ser o pool de threads e passa a ser o pool de
+  conexões (HikariCP). Isso é uma mudança real de comportamento sob carga: a fila
   passa a se formar na aquisição de conexão. Por isso o tamanho do pool é declarado
   explicitamente (`spring.datasource.hikari.maximum-pool-size`, padrão 20) em vez de
   herdado, e a saturação do pool é a métrica a observar na campanha de carga.

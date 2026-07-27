@@ -67,8 +67,8 @@ A imagem é multi-stage: build no JDK 21 e runtime num JRE slim, com o jar em ca
 para as dependências cacharem separadas do código, rodando como usuário sem privilégio.
 É a mesma imagem que iria para um registro, então o que se testa aqui é o que se publica.
 
-Sobre as dependências, vale a distinção porque ela aparece nos modos de falha: **só o
-banco é dependência de execução.** A migração roda na partida e a readiness segue o
+Sobre as dependências, vale a distinção porque ela aparece nos modos de falha: só o
+banco é dependência de execução. A migração roda na partida e a readiness segue o
 banco, então sem Postgres não há autorização. Com a fila inalcançável o poller recua com
 full jitter e a via HTTP continua atendendo; o compose espera pela fila e pelo gerador
 para *semear*, não porque a aplicação precise deles. Detalhes em `docs/failure-modes.md`.
@@ -121,9 +121,8 @@ Postman, com a nota de como obter um `account_id` semeado.
 ## Loop de desenvolvimento
 
 Para iterar no código sem reconstruir a imagem a cada mudança, o mesmo compose sobe só
-as dependências e a aplicação roda pela JVM local. Requer JDK 21, que é o LTS alinhado ao
-que roda em produção hoje, não uma versão presa por inércia: os recursos de que o serviço
-depende (virtual threads, entre outros) já são estáveis nela.
+as dependências e a aplicação roda pela JVM local. Requer JDK 21, o LTS em que os recursos
+de que o serviço depende, virtual threads entre eles, já são estáveis.
 
 ```bash
 # Sobe Postgres, localstack, a topologia de filas e o gerador, sem a aplicação

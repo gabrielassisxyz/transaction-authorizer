@@ -5,7 +5,7 @@ Status: aceito
 ## Contexto
 
 O custo de uma dependência doente não é a requisição que falha, é a requisição que
-**espera**. A configuração anterior não fixava `connectionTimeout`, então valia o padrão de
+espera. A configuração anterior não fixava `connectionTimeout`, então valia o padrão de
 30s do HikariCP, e com threads virtuais ligadas (ADR-001) nada limita quantas requisições
 chegam: não há pool de threads para saturar antes. No throughput medido em `docs/load/`,
 cerca de 2,7 mil requisições por segundo, meio minuto de espera significa dezenas de
@@ -14,9 +14,9 @@ a ser o limite de conexões do servidor HTTP, alcançado em segundos, e depois d
 acontece no TCP, sem resposta nenhuma. "O timeout do pool já limita a espera" é verdade e
 não ajuda: ele limita em trinta segundos.
 
-Vale ser preciso sobre **quando** essa espera acontece, porque nem toda queda a produz. Um
+Vale ser preciso sobre quando essa espera acontece, porque nem toda queda a produz. Um
 banco que recusa conexão, o processo parado de forma limpa, falha rápido e nunca chega a
-formar fila. A espera aparece quando a conexão não pode ser **obtida**: pacotes descartados
+formar fila. A espera aparece quando a conexão não pode ser obtida: pacotes descartados
 entre a aplicação e o banco, um banco sobrecarregado que aceita a conexão e não responde,
 ou o pool inteiro ocupado por consultas lentas. São os modos em que o serviço ainda parece
 vivo por fora, e são exatamente os que o padrão de 30s transformava em acúmulo.
@@ -26,8 +26,8 @@ balanceador, depende do intervalo da sonda e das falhas consecutivas que a plata
 exige, e a própria sonda precisa de uma conexão do pool para responder. O buraco é a janela
 entre o banco morrer e a instância sair de rotação.
 
-A pergunta é a que separa os dois casos: **como distinguir uma fila legítima de pico de uma
-dependência morta?** Os dois se parecem por dentro, uma fila que cresce.
+A pergunta é a que separa os dois casos: como distinguir uma fila legítima de pico de uma
+dependência morta? Os dois se parecem por dentro, uma fila que cresce.
 
 ## Decisão
 
@@ -35,11 +35,11 @@ Duas peças, e a ordem entre elas importa.
 
 **Primeiro, `connectionTimeout` explícito de 3s.** O número sai da medição, não do gosto: o
 cenário de pico em `docs/load/results.md` absorve um surto de dez vezes a base com latência
-máxima de 1331, 1596 e 2105 ms nas três corridas, e **zero erro**. Uma fila legítima cabe
+máxima de 1331, 1596 e 2105 ms nas três corridas, e zero erro. Uma fila legítima cabe
 abaixo de 3s; uma dependência morta não termina nunca. Foi isso que descartou o ajuste
 óbvio de baixar o timeout para algo como 500 ms: transformaria em erro um pico que hoje é
 absorvido limpo. O timeout é um piso necessário porque o breaker só aprende com chamadas
-que **terminam**: com 30s de espera, ele levaria 30s para abrir, que é exatamente o tempo
+que terminam: com 30s de espera, ele levaria 30s para abrir, que é exatamente o tempo
 em que o estrago acontece.
 
 **Segundo, um circuit breaker sobre a porta `TransactionStore`.** Passadas as primeiras
@@ -98,7 +98,7 @@ O desenho, ponto a ponto:
 - `bin/chaos` deixa de provar só a resiliência do consumer e passa a provar também a da via
   HTTP: derruba o banco, afirma o 503 em menos de um segundo e afirma que o breaker de fato
   abriu, porque um contêiner parado recusa conexão na hora e sem essa segunda asserção o
-  roteiro passaria mesmo com o breaker desligado. O modo que ele **não** reproduz é o da
+  roteiro passaria mesmo com o breaker desligado. O modo que ele não reproduz é o da
   conexão que trava, que exigiria descartar pacotes em vez de parar o processo.
 
 ## Alternativas consideradas

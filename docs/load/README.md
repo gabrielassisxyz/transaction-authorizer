@@ -1,11 +1,11 @@
 # Prova de carga
 
-Campanha de carga do autorizador com k6: método, ambiente, cenários e como reproduzir. O
-desafio pressiona volume alto, então a medição é entregável, não item opcional. As regras
-que a mantêm honesta estão declaradas aqui, antes de qualquer número, e os resultados ficam
-em [results.md](results.md). Os dados brutos ficam em [results/](results/), para os
-cenários e a primeira varredura de pool, e em [results2/](results2/), para a varredura
-refeita.
+Campanha de carga do autorizador com k6: método, ambiente, cenários e como reproduzir. Um
+autorizador é dimensionado pelo volume que sustenta, então a capacidade deste é medida em
+vez de estimada. As regras que a mantêm honesta estão declaradas aqui, antes de qualquer
+número, e os resultados ficam em [results.md](results.md). Os dados brutos ficam em
+[results/](results/), para os cenários e a primeira varredura de pool, e em
+[results2/](results2/), para a varredura refeita.
 
 ## Princípios
 
@@ -37,13 +37,13 @@ corrida acontecer.
 
 ## Caveats
 
-Declarados de saída, não como ressalva ao pé da tabela:
+Declarados de saída, antes de existir qualquer número:
 
 - **Nó único de SUT.** Uma instância do app e um Postgres em container, não RDS Multi-AZ
   nem várias tasks atrás de um balanceador. Mede o teto de um nó, não a escala horizontal
   do desenho de deploy.
 - **Postgres em container, não RDS.** Disco, rede e tunings gerenciados diferem de uma
-  instância RDS. O número é do container nesta máquina, não de um banco gerenciado.
+  instância RDS. O número medido é o do container nesta máquina.
 - **localstack ocioso durante a medição.** O caminho medido é só HTTP. A stack SQS existe
   no SUT apenas para semear as 100 mil contas antes da campanha; durante as corridas ela
   fica parada e não compete de forma relevante por recursos.
@@ -109,7 +109,7 @@ acontece. O passo de subir a stack e drenar a semente está em [provisioning.md]
    ```
 
    Parâmetros por corrida: `VUS`, `DURATION`, `SPIKE_VUS`, `BASE_VUS`, `HOT_ACCOUNTS`. Os
-   valores finais de tuning saem da medição, não de palpite, e são registrados em
+   valores finais de tuning saem da medição e ficam registrados em
    [results.md](results.md).
 
 ## Gráfico de saturação do pool

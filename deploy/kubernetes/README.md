@@ -1,7 +1,7 @@
 # Manifesto Kubernetes
 
 O alvo de implantação deste serviço é ECS Fargate, e o [ADR-009](../../docs/adr/009-orquestrador-e-dimensionamento-da-frota.md)
-argumenta a escolha. Este manifesto existe para tornar **verificável** a afirmação central
+argumenta a escolha. Este manifesto existe para tornar verificável a afirmação central
 daquele ADR: a de que a escolha é reversível, porque nada no código conhece o orquestrador.
 
 Cada peça aqui é a tradução de algo que já existe. Os dois probes são os grupos de health de
@@ -9,8 +9,8 @@ Cada peça aqui é a tradução de algo que já existe. Os dois probes são os g
 contagem de réplicas sai do orçamento de conexão em [`docs/scale.md`](../../docs/scale.md),
 não do throughput.
 
-A ausência mais importante é deliberada e está comentada no final do arquivo: **não há
-HorizontalPodAutoscaler**, porque escalar por CPU aqui escala para dentro do problema.
+A ausência mais importante é deliberada e está comentada no final do arquivo: não há
+HorizontalPodAutoscaler, porque escalar por CPU aqui escala para dentro do problema.
 
 ## Verificar
 
@@ -26,7 +26,7 @@ kubectl rollout status deployment/authorizer
 
 ## O que a verificação provou
 
-Rodado num cluster `kind` com um Postgres descartável e **sem** fila: o localstack não sobe
+Rodado num cluster `kind` com um Postgres descartável e sem fila: o localstack não sobe
 aqui, então o SQS fica inalcançável de propósito.
 
 ```
@@ -43,8 +43,8 @@ Com a fila fora do ar, os três endpoints respondem assim:
 /actuator/health            -> ...,"sqs":{...,"error":"SdkClientException","status":"DOWN"},...
 ```
 
-É a separação dos grupos de health funcionando dentro de um orquestrador real: **o SQS está
-DOWN e as réplicas continuam em rotação**, porque a readiness segue o banco e a fila é um
+É a separação dos grupos de health funcionando dentro de um orquestrador real: o SQS está
+DOWN e as réplicas continuam em rotação, porque a readiness segue o banco e a fila é um
 componente à parte. Uma fila fora do ar precisa alertar sem tirar o autorizador do
 balanceador, já que a via HTTP continua sã.
 
@@ -59,7 +59,7 @@ precisa para atribuir um sinal ruim à versão certa:
 
 A primeira versão deste manifesto não subia. `runAsNonRoot: true` combinado com o `USER app`
 do Dockerfile falha com `container has runAsNonRoot and image has non-numeric user`: o
-kubelet precisa decidir se o usuário é root **antes** de existir container onde resolver o
+kubelet precisa decidir se o usuário é root antes de existir container onde resolver o
 nome, então um nome não serve e o UID precisa ser numérico.
 
 Fica registrado porque é o argumento para não versionar manifesto que ninguém aplicou. O

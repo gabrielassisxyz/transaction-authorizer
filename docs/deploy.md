@@ -1,8 +1,8 @@
 # Deploy e pipeline
 
 Como o serviço chega a produção em cloud pública e como uma mudança é promovida com raio
-de detonação limitado. Os diagramas são código mermaid; a prosa justifica cada escolha
-pelo pilar de confiabilidade do Well-Architected, não por catálogo de serviços.
+de detonação limitado. Os diagramas são código mermaid; a prosa justifica cada escolha pelo
+pilar de confiabilidade do Well-Architected.
 
 ## Topologia de deploy
 

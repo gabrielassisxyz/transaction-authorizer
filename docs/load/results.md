@@ -6,8 +6,7 @@ isolado. O método, o ambiente e os caveats que enquadram estes números estão 
 
 Nenhuma corrida registrou erro: as 3.775.191 requisições do regime, do pico e da
 conta quente responderam todas HTTP 200, incluindo os débitos recusados por saldo, que são
-decisão de autorização e não falha. As três corridas por cenário mostram a faixa, não um
-recorte favorável.
+decisão de autorização e não falha.
 
 As tabelas abaixo são derivadas, não a fonte. Os artefatos que as produzem estão em dois
 diretórios e permitem refazer qualquer linha sem religar as máquinas: [results/](results/)
@@ -54,7 +53,7 @@ Concorrência fixa e sustentada a 50 VUs, a via HTTP isolada. É o número de re
 
 Cerca de 2,7 mil autorizações por segundo com p99 abaixo de 92 ms, num único nó de
 aplicação contra um Postgres em container. A variação de 7% entre corridas é a variância
-natural de corrida única; a faixa é o resultado, não a média.
+natural de corrida única, e é a faixa que responde pelo resultado.
 
 ## Pico
 
@@ -64,9 +63,9 @@ a saída time-series do k6, e a curva de fila do pool logo abaixo já mostra a a
 recuperação do surto com mais clareza do que um percentil agregado mostraria.
 
 Pelo mesmo motivo a tabela não traz o p50 que os outros cenários reportam: uma mediana sobre
-uma corrida que mistura base calma e surto de propósito cai dentro da base, que é justamente
-a parte que o cenário não existe para medir. O p99 e a máxima ficam no lugar dela, porque é
-na cauda que o surto aparece.
+uma corrida que mistura base calma e surto cai dentro da base, que é a parte que o cenário
+não existe para medir. O p99 e a máxima ficam no lugar dela, porque é na cauda que o surto
+aparece.
 
 | Corrida | Base VUs | Pico VUs | Throughput (req/s) | p99 (ms) | Máx (ms) | Taxa de erro |
 |---|---|---|---|---|---|---|
@@ -94,9 +93,9 @@ diferença é o custo honesto da serialização no saldo, não um defeito.
 | 3 | 50 | 10 | 1756 | 14,9 | 222 | 0% |
 
 O throughput cai de ~2,7 mil para ~1,8 mil req/s, um terço a menos, e o p99 mais que dobra,
-de ~90 ms para ~220 ms. É exatamente o comportamento projetado: quando muitas requisições
-disputam a mesma linha, o update condicional atômico as serializa no lock de linha em vez
-de deixar duas debitarem o mesmo saldo. Sob carga uniforme sobre 100 mil contas isso fica
+de ~90 ms para ~220 ms. É o comportamento projetado: quando muitas requisições disputam a
+mesma linha, o update condicional atômico as serializa no lock de linha em vez de deixar
+duas debitarem o mesmo saldo. Sob carga uniforme sobre 100 mil contas isso fica
 invisível, porque duas requisições quase nunca tocam a mesma linha; concentrar o tráfego
 torna o custo mensurável. Que não haja erro nem saldo negativo sob essa contenção é a
 invariante do sistema aparecendo na medição.
@@ -108,10 +107,9 @@ invariante do sistema aparecendo na medição.
 Corrida de regime, 50 VUs contra um pool de 20. As conexões ativas sobem e grudam no teto
 de 20, e a fila (`pending`) se estabiliza em torno de 30, com pico de 31: o excedente de VUs
 que não cabe no pool espera, e 50 VUs menos as 20 conexões do pool são exatamente as 30 que
-esperam. É a evidência do teto projetado. Sob virtual threads o gargalo
-de concorrência é o pool de conexões, não uma contagem de threads, então cada requisição
-que precisa do banco pega uma conexão e as demais enfileiram. Fonte de dados em
-`results/hikari-campaign.csv`, coletado por `scripts/scrape-hikari.sh`.
+esperam. É a evidência do teto projetado: sob virtual threads o gargalo de concorrência é o
+pool de conexões, então cada requisição que precisa do banco pega uma e as demais enfileiram.
+Fonte de dados em `results/hikari-campaign.csv`, coletado por `scripts/scrape-hikari.sh`.
 
 O disco não é o teto escondido atrás do pool. Um `iostat -x 1` acompanhou a campanha, e
 sobre as suas 2.779 amostras de um segundo o Postgres escreveu no gp3 a ~2,5 mil operações
@@ -166,13 +164,13 @@ antes da campanha, então fica no default.
 ## A varredura refeita, e o que a primeira mediu de fato
 
 A primeira varredura variou `DB_POOL_SIZE` mantendo a carga oferecida fixa em 50 VUs. Com
-cinquenta requisições em voo, **um pool de 80 nunca tem mais de cinquenta conexões ocupadas**,
+cinquenta requisições em voo, um pool de 80 nunca tem mais de cinquenta conexões ocupadas,
 então o ponto rotulado 80 mediu, na melhor das hipóteses, cinquenta. A comparação entre 40 e
 80 não era entre dois tamanhos de pool: era entre o mesmo número de conexões trabalhando.
 
 Havia um segundo defeito, e ele é o mais interessante. Os pontos rodaram por último e em
-ordem crescente de pool, sobre uma base que nunca foi reiniciada, então **tamanho de pool
-estava perfeitamente correlacionado com tamanho da tabela**. O que a curva leu como "mais
+ordem crescente de pool, sobre uma base que nunca foi reiniciada, então tamanho de pool
+estava perfeitamente correlacionado com tamanho da tabela. O que a curva leu como "mais
 conexões pioram" era o livro-razão engordando.
 
 A refação corrige as duas coisas: carga oferecida constante em 160 VUs em todos os pontos,
@@ -189,13 +187,13 @@ confundidor invisível em quantidade medida. Os dados brutos das onze corridas e
 | 80 | 78,4 de 80 | 98,0% | 72 | 4054 | 163 |
 
 Os dois pools saturados a 98%, que é a condição que a primeira varredura não conseguia
-alcançar. Quadruplicar as conexões entrega **30% mais vazão e uma cauda 45% menor**: a fila
+alcançar. Quadruplicar as conexões entrega 30% mais vazão e uma cauda 45% menor: a fila
 encurta de 134 para 72 requisições, e é a fila que produzia o p99. O host fica com 35% a 48%
 de CPU ociosa nos dois casos, então nada disso é limite de processador.
 
 O resultado foi replicado três vezes ao longo da campanha, comparando o ponto de 80 com os
 controles vizinhos: 32%, 23% e 30% de ganho. Nas três, o ponto de 80 rodou sobre uma base
-**maior** que a do controle anterior, ou seja com o drift jogando contra, e ganhou mesmo
+maior que a do controle anterior, ou seja com o drift jogando contra, e ganhou mesmo
 assim. Não há joelho até 80.
 
 ### O teto se move com o volume acumulado, não com a carga
@@ -212,13 +210,13 @@ corridas de configuração idêntica, pool 20 e 160 VUs, ao longo de toda a camp
 | 11,1M | 3244 |
 | 12,0M | 3115 |
 
-**Metade da vazão perdida** enquanto o livro-razão vai de zero a doze milhões de linhas, sem
+Metade da vazão perdida enquanto o livro-razão vai de zero a doze milhões de linhas, sem
 mudar uma linha de configuração. As duas tabelas de alto volume de escrita são append-only,
 com chave primária aleatória, e cada inserção cai numa folha diferente do índice; o custo
 disso cresce com o tamanho da tabela. A CPU do host não acompanha a queda, o que aponta para
 I/O de índice e não para disputa de processador.
 
-A consequência prática é que **um teto medido tem prazo de validade**. Qualquer número de
+A consequência prática é que um teto medido tem prazo de validade. Qualquer número de
 capacidade deste serviço só significa alguma coisa acompanhado do tamanho da base em que foi
 medido, e planejamento de capacidade aqui precisa de retenção ou particionamento por tempo,
 não de mais réplicas. Nenhuma corrida de três minutos captura isso.
