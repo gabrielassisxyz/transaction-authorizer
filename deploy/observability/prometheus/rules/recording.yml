@@ -37,9 +37,8 @@ groups:
         expr: |
           hikaricp_connections_active / clamp_min(hikaricp_connections_max, 1)
 
-      # Conexoes somadas sobre a frota inteira. E a grandeza que a curva medida em
-      # docs/load/results.md limita: o joelho fica entre 20 e 40 conexoes concorrentes
-      # contra o banco, e o throughput regride em 80, independentemente de quantas tasks
-      # as abriram.
+      # Conexoes somadas sobre a frota inteira. E a grandeza que o max_connections do banco
+      # limita, e o Postgres nao distingue de qual instancia cada conexao veio: e este numero,
+      # e nao a contagem de tasks, que precisa caber no orcamento.
       - record: frota:conexoes_totais:sum
         expr: sum(hikaricp_connections_max)

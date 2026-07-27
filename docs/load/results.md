@@ -134,9 +134,9 @@ r = 0,08, indistinguível de ruído.
 
 ## Tuning medido
 
-Os valores de partida foram escolhidos por raciocínio, e a varredura os confirma com
-medição. Cada ponto de pool diferente de 20 é uma corrida única de regime; o pool 20 é a
-média das três corridas de referência.
+A primeira varredura desta campanha produziu uma leitura errada, e o erro está descrito em
+[a varredura refeita](#a-varredura-refeita-e-o-que-a-primeira-mediu-de-fato) abaixo, junto
+com o que a medição corrigida mostra. O parágrafo seguinte é o que sobrevive dela.
 
 | Pool | Throughput (req/s) | p99 (ms) |
 |---|---|---|
@@ -145,20 +145,72 @@ média das três corridas de referência.
 | 40 | 2769 | 55 |
 | 80 | 2217 | 46 |
 
-O formato da curva é o que importa. Em 10 o pool estrangula: um terço menos throughput, o
-banco ocioso esperando conexão que não existe. De 20 para 40 o throughput mal se move, 4%,
-dentro da variância de 7% que as corridas de regime já mostraram. Em 80 o throughput
-**cai**: passado o joelho, mais conexões só disputam CPU, disco e locks do banco sem
-atender mais ninguém. A queda em 80 é a prova de que o pool é o controle de concorrência
-funcionando, não um número a maximizar.
+Em 10 o pool estrangula, e isso se sustenta: um terço menos throughput, o banco ocioso
+esperando conexão que não existe. Os demais pontos não medem o que a tabela sugere.
 
 | Parâmetro | Partida | Final | Evidência |
 |---|---|---|---|
-| `DB_POOL_SIZE` (HikariCP) | 20 | 20 | 10 estrangula, 80 regride; 20 fica no joelho da curva |
+| `DB_POOL_SIZE` (HikariCP) | 20 | 20 | 10 estrangula; 20 atende com folga de CPU e é o valor entregue |
 | `SQS_POLLERS` | 2 | 2 | fora da via HTTP medida; afeta só a drenagem da semente |
 
-O default de 20 se mantém, agora por medição e não por palpite. O pool 40 insinua uma cauda
-melhor (p99 55 contra 88 ms) sem custar throughput, mas repousa numa corrida só, então não
-justifica trocar o valor entregue; é um candidato a confirmar com n maior, não uma
-conclusão. A contagem de pollers não toca a via HTTP medida, só a velocidade com que a
-semente drena antes da campanha, então fica no default.
+A contagem de pollers não toca a via HTTP medida, só a velocidade com que a semente drena
+antes da campanha, então fica no default.
+
+## A varredura refeita, e o que a primeira mediu de fato
+
+A primeira varredura variou `DB_POOL_SIZE` mantendo a carga oferecida fixa em 50 VUs. Com
+cinquenta requisições em voo, **um pool de 80 nunca tem mais de cinquenta conexões ocupadas**,
+então o ponto rotulado 80 mediu, na melhor das hipóteses, cinquenta. A comparação entre 40 e
+80 não era entre dois tamanhos de pool: era entre o mesmo número de conexões trabalhando.
+
+Havia um segundo defeito, e ele é o mais interessante. Os pontos rodaram por último e em
+ordem crescente de pool, sobre uma base que nunca foi reiniciada, então **tamanho de pool
+estava perfeitamente correlacionado com tamanho da tabela**. O que a curva leu como "mais
+conexões pioram" era o livro-razão engordando.
+
+A refação corrige as duas coisas: carga oferecida constante em 160 VUs em todos os pontos,
+para que o pool seja o limitante em qualquer tamanho, ordem não monotônica, e um ponto de
+controle em pool 20 repetido seis vezes ao longo da campanha para transformar o drift de
+confundidor invisível em quantidade medida.
+
+### Mais conexões não reduzem vazão
+
+| Pool | Conexões ativas | Saturação | Fila | Throughput (req/s) | p99 (ms) |
+|---|---|---|---|---|---|
+| 20 | 19,7 de 20 | 98,6% | 134 | 3115 | 294 |
+| 80 | 78,4 de 80 | 98,0% | 72 | 4054 | 163 |
+
+Os dois pools saturados a 98%, que é a condição que a primeira varredura não conseguia
+alcançar. Quadruplicar as conexões entrega **30% mais vazão e uma cauda 45% menor**: a fila
+encurta de 134 para 72 requisições, e é a fila que produzia o p99. O host fica com 35% a 48%
+de CPU ociosa nos dois casos, então nada disso é limite de processador.
+
+O resultado foi replicado três vezes ao longo da campanha, comparando o ponto de 80 com os
+controles vizinhos: 32%, 23% e 30% de ganho. Nas três, o ponto de 80 rodou sobre uma base
+**maior** que a do controle anterior, ou seja com o drift jogando contra, e ganhou mesmo
+assim. Não há joelho até 80.
+
+### O teto se move com o volume acumulado, não com a carga
+
+Este é o achado que a primeira campanha não podia ter, porque não repetia o controle. Seis
+corridas de configuração idêntica, pool 20 e 160 VUs, ao longo de toda a campanha:
+
+| Linhas no livro-razão | Throughput (req/s) |
+|---|---|
+| 0 | 6202 |
+| 4,7M | 5318 |
+| 7,7M | 4193 |
+| 8,9M | 3753 |
+| 11,1M | 3244 |
+| 12,0M | 3115 |
+
+**Metade da vazão perdida** enquanto o livro-razão vai de zero a doze milhões de linhas, sem
+mudar uma linha de configuração. As duas tabelas de alto volume de escrita são append-only,
+com chave primária aleatória, e cada inserção cai numa folha diferente do índice; o custo
+disso cresce com o tamanho da tabela. A CPU do host não acompanha a queda, o que aponta para
+I/O de índice e não para disputa de processador.
+
+A consequência prática é que **um teto medido tem prazo de validade**. Qualquer número de
+capacidade deste serviço só significa alguma coisa acompanhado do tamanho da base em que foi
+medido, e planejamento de capacidade aqui precisa de retenção ou particionamento por tempo,
+não de mais réplicas. Nenhuma corrida de três minutos captura isso.

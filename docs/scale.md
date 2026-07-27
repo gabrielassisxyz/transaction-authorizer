@@ -4,51 +4,74 @@ Quantas instâncias este serviço comporta, o que limita esse número, e o que m
 quando o volume cresce dez e cem vezes. A campanha em [`load/`](load/) mede uma instância;
 este documento é a leitura dela para uma frota.
 
-## O teto não é a aplicação, é a concorrência do banco
+## O que a medição diz sobre conexões
 
-A varredura de pool da campanha (`load/results.md`, seção de tuning) mediu o throughput de
-uma instância variando só o tamanho do pool de conexões:
+A varredura refeita em `load/results.md` mediu o throughput de uma instância variando o
+tamanho do pool com a carga oferecida mantida constante, que é a condição sem a qual o pool
+não é o limitante:
 
-| Conexões | Throughput (req/s) | p99 (ms) |
-|---|---|---|
-| 10 | 1852 | 203 |
-| 20 | 2667 | 88 |
-| 40 | 2769 | 55 |
-| 80 | 2217 | 46 |
+| Pool | Conexões ativas | Saturação | Fila | Throughput (req/s) | p99 (ms) |
+|---|---|---|---|---|---|
+| 20 | 19,7 de 20 | 98,6% | 134 | 3115 | 294 |
+| 80 | 78,4 de 80 | 98,0% | 72 | 4054 | 163 |
 
-A curva tem joelho entre 20 e 40, e **cai em 80**. Passado o joelho, mais conexões concorrem
-por CPU, disco e locks do mesmo Postgres sem atender mais ninguém.
+**Mais conexões entregam mais vazão e uma cauda melhor**, e o resultado foi replicado três
+vezes ao longo da campanha, com ganhos de 32%, 23% e 30%. Não existe joelho até 80: o pool
+não é um número a minimizar, e a única degradação medida está no outro extremo, em 10, onde
+ele estrangula.
 
-Isso é normalmente lido como "o pool está bem dimensionado", e é. A leitura que importa aqui
-é outra: **a curva não é da aplicação, é do banco.** O Postgres enxerga conexões, não de qual
-task elas vieram, então o eixo dessa tabela não é "pool por instância", é **total de conexões
-concorrentes contra este banco**. E é isso que decide a frota.
+Isso remove uma restrição que uma leitura anterior desta campanha havia inventado. O que
+**não** remove é a restrição real: conexões são um recurso finito e compartilhado do banco.
+O `max_connections` do RDS é função da memória da classe de instância, e cada instância da
+aplicação leva o seu pool inteiro para dentro desse orçamento comum.
 
 ## Aritmética da frota
 
-Com `DB_POOL_SIZE=20`, cada task abre até 20 conexões. Contra a curva acima:
+Com `DB_POOL_SIZE=20`, cada instância abre até 20 conexões, então N instâncias consomem
+20 × N do orçamento do banco. A conta é trivial e não está feita em lugar nenhum: **a
+topologia de deploy desenha um balanceador sobre "múltiplas tasks" e nunca diz quantas
+cabem**, nem nomeia a classe de instância que decide o teto.
 
-| Tasks | Conexões totais | Throughput esperado | O que acontece |
-|---|---|---|---|
-| 1 | 20 | ~2667 req/s | joelho da curva |
-| 2 | 40 | ~2769 req/s | +4%, dentro da variância |
-| 4 | 80 | ~2217 req/s | **abaixo de uma task só** |
-| 8 | 160 | pior | contenção pura |
+Duas ressalvas de honestidade sobre o que a campanha autoriza afirmar:
 
-**Escalar a aplicação horizontalmente não escala o sistema.** Duas tasks já colocam o banco
-no joelho; da quarta em diante o serviço fica mais lento quanto mais instâncias tem. É o
-resultado contraintuitivo que a própria campanha já continha e que a topologia de deploy, ao
-desenhar um balanceador sobre "múltiplas tasks", não endereça.
+- A varredura variou o pool de **uma** instância. Tratar 80 conexões vindas de quatro
+  instâncias como equivalentes a 80 vindas de uma é razoável, porque o Postgres não distingue
+  a origem, mas segue sendo suposição. A medição que decide é duas instâncias reais contra o
+  mesmo banco, e ela não foi feita.
+- O que a medição **descarta** é a ideia de que somar instâncias derrube a vazão por
+  contenção. Até 80 conexões saturadas, com 35% de CPU ociosa no host, o sistema ainda estava
+  ganhando com mais paralelismo.
 
-Uma ressalva de honestidade sobre esta tabela: a varredura variou o pool de **uma** instância.
-Tratar 40 conexões vindas de duas tasks como equivalentes a 40 vindas de uma é uma suposição
-razoável, porque o Postgres não distingue a origem, mas é suposição e não medição. Confirmá-la
-exige uma corrida com duas instâncias, que a campanha atual não fez.
+O limite prático, então, não é uma curva que vira: é um orçamento que acaba. Ele merece ser
+declarado com um número, e o número depende de uma classe de instância que a topologia ainda
+não escolheu.
 
-Antes de qualquer disso, existe um teto administrativo: o `max_connections` do Postgres, que
-no RDS é função da memória da classe de instância. Ele importa menos do que parece, porque a
-curva acima já degrada bem antes de qualquer limite administrativo razoável ser atingido. O
-limite real chega primeiro que o limite configurado.
+## O teto tem prazo de validade
+
+O achado mais consequente da campanha refeita não é sobre conexões. Seis corridas de
+configuração idêntica, espalhadas ao longo da campanha, com o livro-razão crescendo entre
+elas:
+
+| Linhas | Throughput (req/s) |
+|---|---|
+| 0 | 6202 |
+| 4,7M | 5318 |
+| 7,7M | 4193 |
+| 8,9M | 3753 |
+| 11,1M | 3244 |
+| 12,0M | 3115 |
+
+**Metade da vazão perdida ao ir de zero a doze milhões de linhas**, sem mudar configuração
+nenhuma. As duas tabelas de maior escrita são append-only com chave primária aleatória, então
+cada inserção cai numa folha diferente do índice e o custo cresce com o tamanho da tabela. A
+CPU do host não acompanha a queda, o que aponta para I/O de índice.
+
+Isso muda o que significa "capacidade" neste serviço. Um número de throughput só quer dizer
+alguma coisa acompanhado do tamanho da base em que foi medido, e o crescimento do livro-razão
+é uma variável de capacidade tanto quanto a contagem de instâncias. Em doze horas do volume
+que a campanha sustenta, a base cresce mais do que cresceu durante toda ela. A resposta para
+isso não é mais réplica: é retenção, particionamento por tempo com arquivamento, e uma chave
+primária ordenada no tempo para as duas tabelas de alto insert.
 
 ## Um pool para duas vias
 
@@ -75,8 +98,10 @@ Porque throughput não é o único motivo para ter réplicas:
 - **Absorção de pico:** o cenário de surto (`load/results.md`) mostra a fila do pool subindo
   para 180 e voltando a zero sem erro; mais tasks distribuem essa fila.
 
-O conflito é direto: **a disponibilidade quer muitas tasks, o banco quer poucas conexões.**
-Resolver esse conflito é o trabalho de projeto que a topologia atual não faz.
+O conflito é de orçamento, não de curva: **a disponibilidade quer muitas instâncias, e cada
+instância leva o seu pool inteiro para dentro do `max_connections` do banco.** Resolver esse
+conflito é o trabalho de projeto que a topologia atual não faz, e ele fica mais apertado, não
+menos, agora que se sabe que conexões saturadas trabalham em vez de disputar.
 
 ## O pooler, e qual problema ele resolve de verdade
 
@@ -85,21 +110,23 @@ transaction mode. O modo por transação é o compatível com este serviço: as 
 curtas, não há estado de sessão a preservar entre chamadas e nada depende de prepared
 statement fixado a uma conexão.
 
-O que ele resolve normalmente é esgotamento de `max_connections`. Aqui o valor é outro e é
-maior: **ele desacopla o número de tasks do número de conexões.** Vinte tasks para
-disponibilidade e deploy, com o pooler mantendo o total contra o banco dentro do joelho
-medido. Sem ele, escolher entre disponibilidade e throughput; com ele, os dois.
+O que ele resolve é exatamente o esgotamento de `max_connections`, e o valor aqui é
+**desacoplar o número de instâncias do número de conexões**: vinte instâncias para
+disponibilidade e deploy, com o total contra o banco mantido dentro do orçamento. Sem ele, o
+número de instâncias fica preso ao orçamento de conexão, o que é uma restrição de
+disponibilidade disfarçada de detalhe de configuração.
 
 O custo é um salto de rede a mais no caminho de cada autorização e um componente a operar.
-Contra os 88 ms de p99 no joelho, é troca barata.
+Contra os quase 300 ms de p99 que a fila do pool já produz sob carga saturada, é troca
+barata.
 
 ## Dez vezes o volume
 
 Cerca de 27 mil req/s. O caminho, em ordem:
 
-1. **Vertical primeiro.** Uma classe de RDS maior move o joelho para a direita: mais CPU e
-   mais memória sustentam mais conexões concorrentes antes da curva virar. É o passo mais
-   barato e o menos interessante, e tem fim.
+1. **Vertical primeiro.** Uma classe de RDS maior sobe as duas coisas que decidem: mais
+   memória eleva o `max_connections`, e mais CPU e I/O sustentam mais conexões saturadas
+   fazendo trabalho útil. É o passo mais barato e o menos interessante, e tem fim.
 2. **Réplica de leitura não ajuda.** A carga é de escrita. Uma réplica serviria uma consulta
    de saldo, que este serviço não expõe.
 3. **Particionar.** É onde a resposta de verdade está.
@@ -115,8 +142,8 @@ conta, e nunca duas. Consequências:
   contas. Não há saga, não há commit em duas fases, não há compensação;
 - a idempotência acompanha a conta, já que o claim é escrito na mesma partição da mutação.
 
-Com o joelho medido em ~2700 req/s por instância de banco, cem vezes o volume são da ordem de
-dez partições, não uma reescrita. É a diferença entre um sistema que escala por projeto e um
+Com a ordem de grandeza que uma instância de banco sustenta, cem vezes o volume são da ordem
+de dezenas de partições, não uma reescrita. É a diferença entre um sistema que escala por projeto e um
 que escala por sorte, e vale dizer que a decisão que a comprou foi o update condicional
 atômico sobre uma linha, tomada por correção e não por escala.
 

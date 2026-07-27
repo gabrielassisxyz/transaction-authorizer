@@ -24,7 +24,12 @@ Direção do projeto: o que existe, o que vem a seguir e o que fica fora de esco
   por componente, diagrama de deploy em cloud pública e proposta de pipeline canário.
 - **Prova de carga:** campanha k6 com gerador e SUT em máquinas isoladas, três corridas
   por cenário. Regime, pico e concentração em conta quente medidos em `docs/load/`, com a
-  curva de saturação do pool e o tamanho do pool confirmado por varredura.
+  curva de saturação do pool.
+- **Varredura de pool refeita:** a primeira variou o tamanho do pool mantendo a carga
+  oferecida fixa, então nos pontos maiores o pool nunca era o limitante e a curva não media o
+  que a leitura dela supunha. A refação fixa a carga em 160 VUs, embaralha a ordem e repete um
+  controle seis vezes. Resultado em `docs/load/results2/`: conexões saturadas entregam mais
+  vazão e cauda menor até 80, e o teto real cai pela metade conforme o livro-razão cresce.
 - **Revisão às cegas:** um par de olhos que não escreveu o código percorreu o repositório
   a partir de um clone limpo, e a janela de correção que ele apontou foi aplicada.
 
@@ -51,12 +56,19 @@ Direções que o desenho atual já comporta e que um horizonte maior justificari
 O desenho de frota está em [`docs/scale.md`](docs/scale.md); o que segue é o que ele aponta
 e não foi construído, na ordem em que a medição justifica.
 
-- **Pooler de conexões entre as instâncias e o banco:** é o próximo teto real, não uma
-  otimização. A varredura em `docs/load/` mostra o throughput regredindo acima de 40
-  conexões concorrentes, e cada instância abre 20, então a partir da quarta o serviço fica
-  mais lento quanto mais instâncias tem. Um pooler em transaction mode desacopla número de
-  instâncias de número de conexões, que é o que permite ter disponibilidade e throughput ao
-  mesmo tempo em vez de escolher entre os dois.
+- **Retenção e particionamento por tempo do livro-razão:** é o item de maior efeito medido.
+  Seis corridas de configuração idêntica perderam metade da vazão, de 6202 para 3115 req/s,
+  enquanto a base ia de zero a doze milhões de linhas. As duas tabelas de maior escrita são
+  append-only com chave primária aleatória, então cada inserção cai numa folha diferente do
+  índice e o custo cresce com o tamanho da tabela. A saída é particionamento por tempo com
+  arquivamento e uma chave ordenada no tempo; sem isso, qualquer número de capacidade tem
+  prazo de validade e precisa vir acompanhado do tamanho da base em que foi medido.
+- **Pooler de conexões entre as instâncias e o banco:** o `max_connections` do Postgres é
+  finito, é função da memória da classe de instância e é compartilhado por toda a frota, e
+  cada instância leva o seu pool inteiro para dentro dele. Isso prende a contagem de
+  instâncias, que também é decidida por disponibilidade e por deploy, a um recurso do banco.
+  Um pooler em transaction mode desacopla as duas coisas. A conta que falta antes é declarar
+  a classe de instância e, com ela, o orçamento.
 - **Dois pools, um por via:** a autorização e o consumer SQS dividem o mesmo pool hoje, então
   um redrive grande consome conexão de quem tem cliente esperando. Separar move a fila para
   o lado do trabalho assíncrono, que é onde ela deve ficar.
