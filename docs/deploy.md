@@ -25,8 +25,8 @@ flowchart TB
     sqs -.redrive.-> dlq[SQS: dead-letter queue]
 
     ssm[SSM Parameter Store] -.segredos na partida.-> orch
-    app1 -.metricas.-> prom[Prometheus gerenciado]
-    app2 -.metricas.-> prom
+    app1 -.métricas.-> prom[Prometheus gerenciado]
+    app2 -.métricas.-> prom
     prom --> graf[Grafana gerenciado]
 ```
 
@@ -67,10 +67,10 @@ flowchart LR
     push[Push na branch] --> ci[bin/ci: formato, lint, testes, cobertura]
     ci --> build[Build da imagem + scan]
     build --> migrate[Migração expand-only]
-    migrate --> canary[Canário: 5% do trafego]
+    migrate --> canary[Canário: 5% do tráfego]
     canary --> watch{SLO dentro do alvo?}
     watch -- sim --> ramp[Aumenta para 25, 50, 100%]
-    watch -- nao --> rollback[Rollback automatico: 0% no canario]
+    watch -- não --> rollback[Rollback automático: 0% no canário]
     ramp --> contract[Migração contract, se houver]
 ```
 
@@ -98,6 +98,12 @@ O gatilho de rollback é amarrado a um par SLI/SLO observável durante cada degr
 Qualquer um dos dois fora do alvo reverte o peso do canário para zero sem espera por
 decisão humana. A recusa por saldo é 200, não 5xx, então uma decisão de negócio legítima
 nunca é confundida com regressão de disponibilidade.
+
+As duas pernas do gate estão versionadas em
+[`deploy/observability/prometheus/rules/`](../deploy/observability/prometheus/rules/): as
+recording rules definem cada expressão uma vez, e os alertas as consultam. Um gate descrito
+só em prosa não reverte nada, e três consultas escritas à mão divergem justamente durante
+um rollback.
 
 ### Alternativa pesada: blue/green
 
