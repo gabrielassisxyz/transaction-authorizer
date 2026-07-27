@@ -19,6 +19,14 @@ java {
     }
 }
 
+springBoot {
+    // A stepped rollout runs two versions at once, so a bad signal has to be attributable to
+    // one of them. This writes the version and the build time into the image, where
+    // /actuator/info serves it: the instance answers which revision it is, instead of the
+    // deployer inferring it from what was supposed to have shipped.
+    buildInfo()
+}
+
 repositories {
     mavenCentral()
 }
