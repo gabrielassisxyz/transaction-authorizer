@@ -58,8 +58,9 @@ outro conteúdo é evidência de um defeito de quem chamou, não de um reenvio n
   recusa, porque o contrato HTTP responde SUCCEEDED ou FAILED sem campo de motivo
   (ADR-006) e o motivo não é persistido. O motivo existe apenas no log do momento da
   decisão.
-- Métrica de desfecho e de payload divergente fica para o marco de observabilidade; nesta
-  fatia a divergência é registrada só em log.
+- O reenvio é observável de fora: o desfecho sobe o contador `authorizations` com
+  `reason=replay`, e um id reusado para outro conteúdo sobe `transactions.duplicate.payload`
+  além do log de aviso, que é o que separa o reenvio normal do defeito de quem chamou.
 
 ## Alternativas consideradas
 

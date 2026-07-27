@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "com.transactionauthorizer"
-version = "0.0.1-SNAPSHOT"
+version = "0.1.0"
 description = "Transaction authorization API for a bank account balance"
 
 java {

@@ -15,8 +15,8 @@ apagar a mensagem, e o que fazer com a que nunca vai ser processada.
 
 A tabela de compatibilidade do Spring Cloud AWS lista a linha 4.x contra Spring Boot
 **4.0.x**. O projeto está em Boot 4.1, então adotá-lo seria apostar em uma combinação
-que o próprio projeto não declara suportar, e o preço de errar é descobrir o problema
-no meio da fatia seguinte. O SDK v2 sozinho tem risco de compatibilidade zero e o que
+que o próprio projeto não declara suportar, e o preço de errar é uma incompatibilidade
+que só aparece depois, já com o consumer em pé. O SDK v2 tem risco zero aí, e o que
 se perde é um poller pronto: cerca de cem linhas, que é justamente onde estão as
 decisões abaixo.
 
@@ -29,12 +29,12 @@ chute, e o gargalo real é o pool de conexões.
 Cada mensagem é apagada assim que o seu próprio trabalho no banco commita, nunca em
 lote no fim da iteração. Um lote de dez mensagens em que a quinta falha, com ack no
 fim, devolveria as quatro já processadas para a fila, e um banco degradado viraria uma
-tempestade de reentrega de trabalho já feito, exatamente no pior momento.
+tempestade de reentrega de trabalho já feito, no pior momento possível.
 
 ### Falha malformada e falha transitória são coisas diferentes
 
 - **Mensagem que não parseia** é veneno: não adianta tentar de novo, o conteúdo não vai
-  mudar. Ela **não é apagada**. Vence a visibilidade, volta, e depois de
+  mudar. Ela não é apagada. Vence a visibilidade, volta, e depois de
   `maxReceiveCount` recebimentos o redrive a leva para a dead-letter queue. Apagá-la
   ali destruiria a evidência; o redrive é o orçamento de tentativa, e a DLQ é onde
   alguém consegue olhar para ela.
@@ -44,8 +44,8 @@ tempestade de reentrega de trabalho já feito, exatamente no pior momento.
 
 ### `maxReceiveCount` de 5
 
-É orçamento, não contagem de retentativa: o contador de recebimentos **nunca é
-zerado**, então precisa absorver uma indisponibilidade curta de banco sem mandar
+É orçamento, não contagem de retentativa: o contador de recebimentos nunca é
+zerado, então precisa absorver uma indisponibilidade curta de banco sem mandar
 mensagem válida para a DLQ. Três seria agressivo demais para isso; um número alto
 demais faria mensagem envenenada consumir recebimentos por muito tempo.
 
@@ -63,7 +63,7 @@ classifica a mensagem como veneno e a manda para o orçamento de redrive.
 
 A tolerância de cinco minutos existe porque duas máquinas nunca concordam no segundo.
 Sem ela, desvio normal de relógio mandaria evento válido para a dead-letter queue, que
-é exatamente o tipo de recusa que faz alguém desligar a validação.
+é o tipo de recusa que faz alguém desligar a validação.
 
 ### Duplicata exata e duplicata divergente
 
@@ -71,7 +71,7 @@ A criação é idempotente por `INSERT ... ON CONFLICT (id) DO NOTHING`. Quando 
 acontece, o dono e o status armazenados são comparados com os do evento:
 
 - iguais: redundância normal de entrega *at-least-once*, contabilizada e ignorada;
-- diferentes: **anomalia**. O primeiro registro é mantido, mas o caso vira log de aviso
+- diferentes: anomalia. O primeiro registro é mantido, mas o caso vira log de aviso
   e a métrica `accounts.conflict`. Tratar isso como duplicata normal esconderia um
   defeito real de quem produz o evento.
 
@@ -91,9 +91,10 @@ duplicado e crescimento enganoso da DLQ.
   cria. Localmente isso é um serviço one-shot no compose; em produção é
   infraestrutura como código. O ganho é que um nome de fila errado falha alto, em vez
   de produzir uma fila vazia que ninguém lê.
-- A espera antes de nova tentativa é fixa nesta fatia. Sob falha correlacionada, todos
-  os pollers voltam juntos; o *backoff* com full jitter que resolve isso entra na fatia
-  de resiliência.
+- A espera antes de nova tentativa não pode ser fixa: sob falha correlacionada, pollers
+  que falharam juntos voltariam juntos e martelariam a dependência assim que ela volta.
+  Por isso o poller recua com full jitter, dormindo um intervalo aleatório em
+  `[0, min(cap, base * 2^tentativas)]`, com base de 1s e teto de 30s.
 
 ## Alternativas consideradas
 

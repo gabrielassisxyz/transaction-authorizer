@@ -15,30 +15,30 @@ não é o limitante:
 | 20 | 19,7 de 20 | 98,6% | 134 | 3115 | 294 |
 | 80 | 78,4 de 80 | 98,0% | 72 | 4054 | 163 |
 
-**Mais conexões entregam mais vazão e uma cauda melhor**, e o resultado foi replicado três
+Mais conexões entregam mais vazão e uma cauda melhor, e o resultado foi replicado três
 vezes ao longo da campanha, com ganhos de 32%, 23% e 30%. Não existe joelho até 80: o pool
 não é um número a minimizar, e a única degradação medida está no outro extremo, em 10, onde
 ele estrangula.
 
 Isso remove uma restrição que uma leitura anterior desta campanha havia inventado. O que
-**não** remove é a restrição real: conexões são um recurso finito e compartilhado do banco.
+não remove é a restrição real: conexões são um recurso finito e compartilhado do banco.
 O `max_connections` do RDS é função da memória da classe de instância, e cada instância da
 aplicação leva o seu pool inteiro para dentro desse orçamento comum.
 
 ## Aritmética da frota
 
 Com `DB_POOL_SIZE=20`, cada instância abre até 20 conexões, então N instâncias consomem
-20 × N do orçamento do banco. A conta é trivial e não está feita em lugar nenhum: **a
+20 × N do orçamento do banco. A conta é trivial e não está feita em lugar nenhum: a
 topologia de deploy desenha um balanceador sobre "múltiplas tasks" e nunca diz quantas
-cabem**, nem nomeia a classe de instância que decide o teto.
+cabem, nem nomeia a classe de instância que decide o teto.
 
 Duas ressalvas de honestidade sobre o que a campanha autoriza afirmar:
 
-- A varredura variou o pool de **uma** instância. Tratar 80 conexões vindas de quatro
+- A varredura variou o pool de uma única instância. Tratar 80 conexões vindas de quatro
   instâncias como equivalentes a 80 vindas de uma é razoável, porque o Postgres não distingue
   a origem, mas segue sendo suposição. A medição que decide é duas instâncias reais contra o
   mesmo banco, e ela não foi feita.
-- O que a medição **descarta** é a ideia de que somar instâncias derrube a vazão por
+- O que a medição descarta é a ideia de que somar instâncias derrube a vazão por
   contenção. Até 80 conexões saturadas, com 35% de CPU ociosa no host, o sistema ainda estava
   ganhando com mais paralelismo.
 
@@ -61,7 +61,7 @@ elas:
 | 11,1M | 3244 |
 | 12,0M | 3115 |
 
-**Metade da vazão perdida ao ir de zero a doze milhões de linhas**, sem mudar configuração
+Metade da vazão perdida ao ir de zero a doze milhões de linhas, sem mudar configuração
 nenhuma. As duas tabelas de maior escrita são append-only com chave primária aleatória, então
 cada inserção cai numa folha diferente do índice e o custo cresce com o tamanho da tabela. A
 CPU do host não acompanha a queda, o que aponta para I/O de índice.
@@ -77,7 +77,7 @@ primária ordenada no tempo para as duas tabelas de alto insert.
 
 O orçamento de conexão de uma instância não é gasto só pela autorização. O adaptador de
 persistência da autorização e o da criação de conta injetam o mesmo `JdbcClient`, então a
-via HTTP e o consumer SQS disputam as **mesmas 20 conexões**.
+via HTTP e o consumer SQS disputam as mesmas 20 conexões.
 
 Em regime normal isso não aparece, porque a semente drena e o consumo fica ocioso. Aparece
 no pior momento possível: um redrive grande, ou uma reprocessagem em massa da fila, consome
@@ -98,8 +98,8 @@ Porque throughput não é o único motivo para ter réplicas:
 - **Absorção de pico:** o cenário de surto (`load/results.md`) mostra a fila do pool subindo
   para 180 e voltando a zero sem erro; mais tasks distribuem essa fila.
 
-O conflito é de orçamento, não de curva: **a disponibilidade quer muitas instâncias, e cada
-instância leva o seu pool inteiro para dentro do `max_connections` do banco.** Resolver esse
+O conflito é de orçamento, não de curva: a disponibilidade quer muitas instâncias, e cada
+instância leva o seu pool inteiro para dentro do `max_connections` do banco. Resolver esse
 conflito é o trabalho de projeto que a topologia atual não faz, e ele fica mais apertado, não
 menos, agora que se sabe que conexões saturadas trabalham em vez de disputar.
 
@@ -110,8 +110,8 @@ transaction mode. O modo por transação é o compatível com este serviço: as 
 curtas, não há estado de sessão a preservar entre chamadas e nada depende de prepared
 statement fixado a uma conexão.
 
-O que ele resolve é exatamente o esgotamento de `max_connections`, e o valor aqui é
-**desacoplar o número de instâncias do número de conexões**: vinte instâncias para
+O que ele resolve é o esgotamento de `max_connections`, e o valor aqui é
+desacoplar o número de instâncias do número de conexões: vinte instâncias para
 disponibilidade e deploy, com o total contra o banco mantido dentro do orçamento. Sem ele, o
 número de instâncias fica preso ao orçamento de conexão, o que é uma restrição de
 disponibilidade disfarçada de detalhe de configuração.
@@ -133,29 +133,29 @@ Cerca de 27 mil req/s. O caminho, em ordem:
 
 ## Cem vezes: particionamento por conta
 
-A propriedade que torna este desenho particionável é a mesma que o torna correto: **a
-invariante de saldo nunca-negativo é local a uma linha.** Uma autorização toca exatamente uma
+A propriedade que torna este desenho particionável é a mesma que o torna correto: a
+invariante de saldo nunca-negativo é local a uma linha. Uma autorização toca exatamente uma
 conta, e nunca duas. Consequências:
 
 - `account_id` é chave de partição natural;
-- **não existe transação entre partições**, porque não existe operação que envolva duas
+- não existe transação entre partições, porque não existe operação que envolva duas
   contas. Não há saga, não há commit em duas fases, não há compensação;
 - a idempotência acompanha a conta, já que o claim é escrito na mesma partição da mutação.
 
 Com a ordem de grandeza que uma instância de banco sustenta, cem vezes o volume são da ordem
-de dezenas de partições, não uma reescrita. É a diferença entre um sistema que escala por projeto e um
-que escala por sorte, e vale dizer que a decisão que a comprou foi o update condicional
-atômico sobre uma linha, tomada por correção e não por escala.
+de dezenas de partições, não uma reescrita. A decisão que comprou isso foi o update
+condicional atômico sobre uma linha, tomada por correção e não por escala.
 
 ## O que não particiona: a conta quente
 
-Particionar distribui contas diferentes. Não faz nada por **uma** conta quente, porque a
+Particionar distribui contas diferentes. Não faz nada por uma única conta quente, porque a
 serialização é sobre a linha.
 
 Isso não é hipótese: a campanha mediu. Concentrando o tráfego em 10 contas, o throughput cai
-de 2667 para **1853 req/s** e o p99 sobe de 88 para 222 ms, com 0% de erro. É a contenção do
-lock de linha aparecendo como número. Uma conta quente de verdade, num sistema real, é a conta
-de liquidação de um lojista grande, e ela não é um caso de laboratório.
+dos cerca de 2,7 mil req/s do regime para 1853, e o p99 sobe dos cerca de 90 ms para 222, com
+0% de erro. É a contenção do lock de linha aparecendo como número. Uma conta quente de
+verdade, num sistema real, é a conta de liquidação de um lojista grande, e ela não é um caso
+de laboratório.
 
 As saídas, em ordem de custo:
 
@@ -171,7 +171,7 @@ As saídas, em ordem de custo:
 
 Nenhuma das duas foi construída aqui, porque o formato de tráfego que as justifica é
 justamente o que a medição mostra ainda caber: 1853 req/s numa conta concentrada, sem erro.
-**O gatilho para trocar é a conta quente sozinha passar do que uma linha aguenta**, e o número
+O gatilho para trocar é a conta quente sozinha passar do que uma linha aguenta, e o número
 para observar já está medido.
 
 ## O `Retry-After` foi calibrado contra a falha errada
@@ -187,7 +187,7 @@ o que era um mecanismo de alívio vira uma fonte de carga contra um banco que es
 momento dele.
 
 A postura continua correta: qualquer caso de banco inalcançável responde 503 e nunca uma
-recusa fabricada, então nenhuma decisão é inventada. O que está errado é a **calibração**, e
+recusa fabricada, então nenhuma decisão é inventada. O que está errado é a calibração, e
 o número certo não é adivinhável: ele sai de medir a janela real de failover da classe de
 instância escolhida. Enquanto isso não for medido, o comportamento honesto é um
 `Retry-After` maior, ou crescente entre tentativas, em vez de um fixo curto derivado de um

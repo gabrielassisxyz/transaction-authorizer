@@ -5,9 +5,9 @@ gerador e servidor no mesmo host mede loopback: o gerador rouba CPU do servidor 
 nunca cruza uma rede. Este runbook sobe as duas, dimensiona o SUT para que a saturação seja
 alcançável e derruba tudo ao final.
 
-Provisione quando a fase de resiliência começa, não quando a campanha de carga começa. O
-tempo de espera das máquinas é a armadilha clássica: descobrir na véspera da entrega que os
-números de loopback não valem e correr atrás de uma segunda máquina.
+Provisione as máquinas antes de precisar delas. O tempo de espera é a armadilha clássica:
+descobrir na véspera que os números de loopback não valem e correr atrás de uma segunda
+máquina.
 
 ## As duas máquinas
 
@@ -42,9 +42,9 @@ própria stack do compose:
    APP_BIND=0.0.0.0 docker compose up -d --build
    ```
 
-   O app fica atrás do profile `app`, então sem ele a stack sobe Postgres, localstack e o
-   gerador mas nenhum consumer, e a semente ficaria parada na fila. Com o profile, sobe
-   também o autorizador conteinerizado, que é o próprio SUT da campanha.
+   O comando sobe o sistema inteiro, incluindo o autorizador conteinerizado, que é o
+   próprio SUT da campanha. É a mesma imagem que a campanha mede e que iria para um
+   registro.
 
    `APP_BIND` é o que torna a campanha possível. O compose publica a porta em `127.0.0.1`
    por padrão, para que uma máquina de desenvolvimento não coloque o autorizador na rede

@@ -13,10 +13,10 @@ compute type, nomeado sem tamanho, sem contagem e sem política de crescimento.
 A decisão é menos sobre qual produto e mais sobre o que de fato limita a contagem de tasks.
 A varredura refeita em `docs/load/results.md` mediu o pool com a carga oferecida constante e
 com a saturação registrada: a 98% de ocupação, quadruplicar as conexões de 20 para 80 entrega
-**30% mais vazão e uma cauda 45% menor**, com o host ainda em 35% de CPU ociosa. Conexões
+30% mais vazão e uma cauda 45% menor, com o host ainda em 35% de CPU ociosa. Conexões
 saturadas trabalham; não disputam.
 
-O limite, portanto, não é uma curva que vira, é **um orçamento que acaba**. O `max_connections`
+O que limita a frota, portanto, é um orçamento finito. O `max_connections`
 do Postgres é finito e compartilhado, é função da memória da classe de instância do RDS, e
 cada task leva o seu pool inteiro para dentro dele. Com `DB_POOL_SIZE=20`, N tasks consomem
 20 × N desse orçamento, e a topologia desenha um balanceador sobre "múltiplas tasks" sem
@@ -38,11 +38,10 @@ A escolha do orquestrador segue o tamanho do problema. O que o Kubernetes oferec
 valor para uma frota de serviços heterogêneos: agendamento fino, bin-packing de cargas
 distintas no mesmo nó, um ecossistema de operators, políticas por namespace. Nada disso é
 exercido por um único serviço sem estado com duas dependências gerenciadas, e o custo é um
-control plane que alguém opera. Fargate remove também a camada de nós, que é exatamente a
-camada que este serviço não tem o que fazer com.
+control plane que alguém opera. Fargate remove também a camada de nós, para a qual este
+serviço não tem uso.
 
-O que sustenta a decisão não é a preferência, é a **reversibilidade**, e ela é verificável
-neste repositório:
+O que sustenta a decisão é a reversibilidade, e ela é verificável neste repositório:
 
 - os grupos de health já existentes mapeiam um a um em probes: `readiness`, que segue o banco,
   vira `readinessProbe`; `liveness`, que não tem dependência, vira `livenessProbe`, e a
@@ -82,7 +81,7 @@ e é isso que a torna barata de mudar.
 - Enquanto não existir um pooler entre as tasks e o banco, disponibilidade e throughput
   competem: cada task a mais por redundância consome do mesmo orçamento. `docs/scale.md`
   registra o pooler como o passo que desfaz esse conflito, e ele é a próxima peça de
-  infraestrutura, não uma otimização.
+  infraestrutura a existir.
 - A migração para Kubernetes, se o contexto organizacional pedir, é uma tradução de
   manifesto, não uma mudança de desenho. O que não muda é o orçamento de conexão, que
   continuaria governando as réplicas do mesmo jeito.
@@ -97,7 +96,7 @@ nenhuma das capacidades pelas quais se paga o control plane. Adotá-lo por padr�
 escolher a ferramenta pela expectativa de quem lê, e não pelo problema.
 
 **Instâncias EC2 sob um auto scaling group, sem orquestrador.** Recusado. Substituir uma
-instância doente e reconciliar contagem desejada é exatamente o trabalho que se estaria
+instância doente e reconciliar contagem desejada é o trabalho que se estaria
 reimplementando, e a topologia perderia a substituição por task que o canário usa.
 
 **Função serverless por requisição.** Recusado, e o motivo é o mesmo orçamento de conexão

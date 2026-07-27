@@ -1,8 +1,8 @@
-# Kubernetes nao e o alvo de implantacao deste servico: o ADR-009 escolhe ECS Fargate e
-# argumenta por que. Este manifesto existe para tornar verificavel a afirmacao central
-# daquele ADR, a de que a escolha e reversivel porque nada no codigo conhece o orquestrador.
-# Cada peca abaixo e a traducao direta de algo que ja existe, e a ausencia mais importante
-# aqui e deliberada: nao ha HorizontalPodAutoscaler.
+# Kubernetes is not the deployment target of this service: ADR-009 picks ECS Fargate and
+# argues why. This manifest exists to make that ADR's central claim verifiable, the claim
+# that the choice is reversible because nothing in the code knows the orchestrator. Every
+# piece below is the direct translation of something that already exists, and the most
+# important absence here is deliberate: there is no HorizontalPodAutoscaler.
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -11,12 +11,12 @@ metadata:
   labels:
     app: authorizer
 data:
-  # 12-factor: a mesma imagem sobe em qualquer ambiente e so a configuracao muda.
+  # 12-factor: the same image runs in any environment and only the configuration changes.
   DB_URL: jdbc:postgresql://postgres:5432/transaction_authorizer
-  # O pool por replica e a unidade da aritmetica de frota em docs/scale.md. Alterar este
-  # numero muda quantas replicas o banco suporta, entao ele nao e um ajuste local.
+  # The per-replica pool is the unit of the fleet arithmetic in docs/scale.md. Changing this
+  # number changes how many replicas the database supports, so it is not a local tweak.
   DB_POOL_SIZE: "20"
-  # Piso necessario para o breaker aprender com chamadas que terminam (ADR-008).
+  # The floor the breaker needs in order to learn from calls that terminate (ADR-008).
   DB_CONNECTION_TIMEOUT_MS: "3000"
   AWS_REGION: sa-east-1
   SQS_QUEUE_NAME: conta-bancaria-criada
@@ -29,9 +29,9 @@ metadata:
   labels:
     app: authorizer
 spec:
-  # Duas replicas por disponibilidade e para o rollout em degraus ter duas versoes servindo.
-  # Vazao tambem se ganha com mais replicas, mas o teto e o orcamento de conexao do banco:
-  # cada replica leva o seu pool inteiro para dentro do max_connections (docs/scale.md).
+  # Two replicas for availability, and so the stepped rollout has two versions serving at
+  # once. More replicas also buy throughput, but the ceiling is the database connection
+  # budget: each replica takes its whole pool into max_connections (docs/scale.md).
   replicas: 2
   selector:
     matchLabels:
@@ -39,9 +39,9 @@ spec:
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      # Nunca mais de tres replicas simultaneas durante o rollout, ou seja, no maximo 60
-      # conexoes contra o banco na janela de troca. O deploy e justamente quando o consumo de
-      # conexao pico acontece sem ninguem esperar por ele, entao o surge fica limitado.
+      # Never more than three replicas at once during a rollout, which is at most 60
+      # connections against the database in the swap window. A deploy is exactly when peak
+      # connection usage happens with nobody expecting it, so the surge stays bounded.
       maxSurge: 1
       maxUnavailable: 0
   template:
@@ -49,7 +49,7 @@ spec:
       labels:
         app: authorizer
     spec:
-      # Uma replica por zona, que e o mesmo desenho da topologia em docs/deploy.md.
+      # One replica per zone, the same shape as the topology in docs/deploy.md.
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: topology.kubernetes.io/zone
@@ -80,31 +80,31 @@ spec:
                   key: db-password
           resources:
             requests:
-              # A concorrencia e limitada pelo pool de conexoes, nao pela CPU (ADR-009), entao
-              # a CPU e dimensionada para atender o pool e nao para ser o eixo de escala.
+              # Concurrency is bounded by the connection pool, not by the CPU (ADR-009), so
+              # the CPU is sized to serve the pool rather than to be the axis of scale.
               cpu: 500m
               memory: 768Mi
             limits:
               memory: 768Mi
-          # Os dois probes sao a traducao um a um dos grupos de health que ja existem em
-          # application.yaml, e a separacao entre eles existe pelo mesmo motivo aqui e no ECS:
-          # liveness nao carrega dependencia, entao o banco cair nunca reinicia o processo e
-          # transforma uma queda de dependencia em cascata de reinicios.
+          # The two probes are the one-to-one translation of the health groups that already
+          # exist in application.yaml, and they are separate for the same reason here and on
+          # ECS: liveness carries no dependency, so a database outage never restarts the
+          # process and turns a dependency failure into a cascade of restarts.
           livenessProbe:
             httpGet:
               path: /actuator/health/liveness
               port: http
             periodSeconds: 10
             failureThreshold: 3
-          # Readiness segue o banco: sem banco, sem autorizacao, tira a replica de rotacao.
+          # Readiness follows the database: no database, no authorization, pull the replica.
           readinessProbe:
             httpGet:
               path: /actuator/health/readiness
               port: http
             periodSeconds: 5
             failureThreshold: 3
-          # A partida faz migracao Flyway antes de servir, entao o gate de inicializacao e
-          # separado do de readiness para nao contar a migracao como falha.
+          # Startup runs the Flyway migration before serving, so the startup gate is separate
+          # from readiness and the migration is not counted as a failure.
           startupProbe:
             httpGet:
               path: /actuator/health/readiness
@@ -113,10 +113,10 @@ spec:
             failureThreshold: 30
           securityContext:
             runAsNonRoot: true
-            # O UID precisa ser numerico. O Dockerfile declara `USER app`, e um nome nao
-            # serve: o kubelet resolve o usuario antes de existir container onde resolver o
-            # nome, entao com runAsNonRoot ligado ele recusa a imagem por nao conseguir
-            # provar que o usuario nao e root. 999 e o uid que o useradd --system atribui.
+            # The UID has to be numeric. The Dockerfile declares `USER app`, and a name does
+            # not work: the kubelet resolves the user before a container exists to resolve the
+            # name in, so with runAsNonRoot on it rejects the image, unable to prove the user
+            # is not root. 999 is the uid useradd --system assigns.
             runAsUser: 999
             runAsGroup: 999
             allowPrivilegeEscalation: false
@@ -124,16 +124,16 @@ spec:
             capabilities:
               drop: ["ALL"]
           volumeMounts:
-            # Com raiz somente leitura, o Tomcat embutido ainda precisa de um diretorio
-            # temporario para escrever. Sem isto o processo nao sobe.
+            # With a read-only root, the embedded Tomcat still needs a temporary directory to
+            # write into. Without this the process does not start.
             - name: tmp
               mountPath: /tmp
       volumes:
         - name: tmp
           emptyDir: {}
-      # O desligamento gracioso espera as mensagens SQS em voo terminarem, e o timeout aqui
-      # precisa ultrapassar o long poll de 20s para nao abandonar mensagem recebida e ainda
-      # nao commitada (docs/failure-modes.md).
+      # Graceful shutdown waits for in-flight SQS messages to finish, and this timeout has to
+      # outlast the 20s long poll so a received, not yet committed message is not abandoned
+      # (docs/failure-modes.md).
       terminationGracePeriodSeconds: 45
 ---
 apiVersion: v1
@@ -156,21 +156,20 @@ kind: PodDisruptionBudget
 metadata:
   name: authorizer
 spec:
-  # Uma replica sempre servindo durante manutencao de no. Com duas replicas isso limita a
-  # evicao a uma por vez, que e o comportamento desejado: a outra sustenta o trafego.
+  # One replica always serving during node maintenance. With two replicas this caps eviction
+  # at one at a time, which is the wanted behaviour: the other one carries the traffic.
   minAvailable: 1
   selector:
     matchLabels:
       app: authorizer
-# Ausencia deliberada: nenhum HorizontalPodAutoscaler.
+# A deliberate absence: no HorizontalPodAutoscaler.
 #
-# O default de qualquer plataforma e escalar por CPU, e aqui essa metrica e cega para o
-# limite que importa. A medicao em docs/load/results.md registra o pool a 98% de ocupacao com
-# 134 requisicoes na fila enquanto o host mantinha 48% de CPU ociosa: a espera esta no pool,
-# nao no processador, entao um HPA por CPU nao reage quando o servico ja esta no limite.
+# Every platform defaults to scaling on CPU, and here that metric is blind to the limit that
+# matters. The measurement in docs/load/results.md records the pool at 98% occupancy with 134
+# requests queued while the host kept 48% of its CPU idle: the wait is in the pool, not in the
+# processor, so a CPU-driven HPA does not react when the service is already at its limit.
 #
-# O teto tambem nao e de vazao, e de orcamento: cada replica leva o seu pool inteiro para
-# dentro do max_connections do banco, que e finito e compartilhado. Enquanto nao houver um
-# pooler entre as replicas e o banco, a politica correta e teto fixo declarado. Com pooler, o
-# eixo de escala passa a ser a saturacao do pool, e um HPA sobre essa metrica passa a fazer
-# sentido.
+# The ceiling is one of budget rather than throughput: each replica takes its whole pool into
+# the database's max_connections, which is finite and shared. Until there is a pooler between
+# the replicas and the database, the correct policy is a declared fixed ceiling. With a pooler,
+# the axis of scale becomes pool saturation, and an HPA over that metric starts to make sense.

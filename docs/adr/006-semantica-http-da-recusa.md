@@ -13,7 +13,7 @@ do protocolo e qual é uma resposta de negócio bem-sucedida que por acaso diz n
 ## Decisão
 
 Uma recusa é um resultado de domínio, não um erro de transporte. Uma autorização
-aprovada e uma recusada retornam ambas **200**, com o mesmo corpo, diferindo apenas no
+aprovada e uma recusada retornam ambas 200, com o mesmo corpo, diferindo apenas no
 campo `status`:
 
 ```json

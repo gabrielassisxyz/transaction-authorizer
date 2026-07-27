@@ -1,110 +1,109 @@
 groups:
-  - name: gate-de-rollout
+  - name: rollout-gate
     rules:
-      # As duas condicoes que docs/deploy.md manda reverter o canario sem esperar decisao
-      # humana. Ficam aqui, versionadas, porque um gate que so existe em prosa nao reverte
-      # nada.
-      - alert: LatenciaP99AcimaDoAlvo
-        expr: autorizacao:latencia_p99:5m > 0.15
+      # The two conditions docs/deploy.md reverts the canary on, with no human decision in
+      # the loop. They live here, versioned, because a gate that exists only in prose
+      # reverts nothing.
+      - alert: LatencyP99AboveTarget
+        expr: authorization:latency_p99:5m > 0.15
         for: 5m
         labels:
           severity: critical
-          acao: rollback
+          action: rollback
         annotations:
-          summary: "p99 da autorizacao acima do alvo"
+          summary: "authorization p99 above target"
           description: >
-            p99 em {{ $value | humanizeDuration }} contra alvo de 150ms, sustentado pela
-            janela do degrau. Perna de latencia do gate de rollout.
+            p99 at {{ $value | humanizeDuration }} against a 150ms target, sustained over
+            the step window. Latency leg of the rollout gate.
 
-      - alert: DisponibilidadeAbaixoDoAlvo
-        expr: autorizacao:disponibilidade:5m < 0.999
+      - alert: AvailabilityBelowTarget
+        expr: authorization:availability:5m < 0.999
         for: 5m
         labels:
           severity: critical
-          acao: rollback
+          action: rollback
         annotations:
-          summary: "disponibilidade da autorizacao abaixo do alvo"
+          summary: "authorization availability below target"
           description: >
-            Fracao de nao-5xx em {{ $value | humanizePercentage }} contra alvo de 99,9%.
-            Recusa por saldo responde 200 e nao entra nesta conta.
+            Non-5xx fraction at {{ $value | humanizePercentage }} against a 99.9% target.
+            A refusal for insufficient funds answers 200 and does not count here.
 
-  - name: capacidade
+  - name: capacity
     rules:
-      # Fila no pool sustentada e o sinal de que a instancia esta no seu limite de
-      # concorrencia, e a medicao em docs/load/results.md mostra que o host ainda tem CPU
-      # sobrando quando isso acontece: a espera esta no pool, entao nenhuma metrica de
-      # processador ve este limite.
-      - alert: FilaNoPoolSustentada
+      # A sustained pool queue is the signal that the instance is at its concurrency limit,
+      # and the measurement in docs/load/results.md shows the host still has CPU to spare
+      # when it happens: the wait is in the pool, so no processor metric sees this limit.
+      - alert: SustainedPoolQueue
         expr: hikaricp_connections_pending > 0
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "requisicoes esperando conexao ha 10 minutos"
+          summary: "requests waiting for a connection for 10 minutes"
           description: >
-            {{ $value }} requisicoes na fila do pool. Conexoes a mais entregam mais vazao e
-            cauda menor, entao aumentar pool ou frota ajuda, desde que o total contra o banco
-            caiba no max_connections. Confira o orcamento de conexao antes de subir qualquer
-            um dos dois.
+            {{ $value }} requests queued on the pool. More connections deliver more
+            throughput and a shorter tail, so raising the pool or the fleet helps, as long
+            as the total against the database fits max_connections. Check the connection
+            budget before raising either.
 
-  - name: dependencias
+  - name: dependencies
     rules:
-      - alert: CircuitoDaAutorizacaoAberto
+      - alert: AuthorizationCircuitOpen
         expr: authorizations_circuit_open > 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "circuito da autorizacao aberto ou sondando recuperacao"
+          summary: "authorization circuit open or probing recovery"
           description: >
-            O armazenamento esta inalcancavel e a autorizacao responde 503 com Retry-After,
-            sem persistir recusa (ADR-008).
+            The store is unreachable and authorization answers 503 with Retry-After,
+            persisting no refusal (ADR-008).
 
-      - alert: FilaSqsInalcancavel
+      - alert: AccountQueueUnreachable
         expr: sqs_connectivity == 0
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "fila de criacao de contas inalcancavel"
+          summary: "account-creation queue unreachable"
           description: >
-            A via HTTP segue sa: a readiness nao acompanha a fila de proposito, entao o
-            autorizador continua em rotacao enquanto o consumo espera.
+            The HTTP path is healthy: readiness deliberately does not follow the queue, so
+            the authorizer stays in rotation while consumption waits.
 
-      # A mensagem que se perde nao e a veneno, e a valida. Corpo que nao parseia sobe o
-      # contador de poison e o alerta abaixo pega; uma conta legitima cujo banco estava fora
-      # do ar sobe `failed`, volta pela fila, e some para a dead-letter queue quando o
-      # orcamento de recebimento acaba, sem que nada mais dispare. Este contador ja existia
-      # no codigo e nao era lido por regra nenhuma.
-      - alert: FalhasTransitoriasNoConsumo
+      # The message that gets lost is the valid one, not the poison one. A body that does
+      # not parse raises the poison counter and the alert below catches it; a legitimate
+      # account whose database was down raises `failed`, returns through the queue, and
+      # slips into the dead-letter queue once the receive budget runs out, with nothing
+      # else firing.
+      - alert: TransientConsumerFailures
         expr: increase(sqs_messages_total{outcome="failed"}[10m]) > 0
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "mensagens de criacao de conta falhando ha 10 minutos"
+          summary: "account-creation messages failing for 10 minutes"
           description: >
-            {{ $value }} falhas transitorias na janela. A mensagem volta pela fila, mas o
-            orcamento antes da dead-letter queue e de cerca de dois minutos de
-            indisponibilidade, entao uma queda mais longa manda conta valida para la.
+            {{ $value }} transient failures in the window. The message returns through the
+            queue, but the budget before the dead-letter queue is around two minutes of
+            downtime, so a longer outage sends a valid account there.
 
-      - alert: MensagensVenenoCrescendo
+      - alert: PoisonMessagesGrowing
         expr: increase(sqs_messages_total{outcome="poison"}[15m]) > 0
         labels:
           severity: warning
         annotations:
-          summary: "mensagem descartada para a dead-letter queue"
+          summary: "message discarded to the dead-letter queue"
           description: >
-            Corpo que nao parseia chegou ao orcamento de retentativa. A dead-letter queue e
-            ponto de parada para decisao humana, nao caminho de retentativa automatica.
+            A body that does not parse spent the retry budget. The dead-letter queue is a
+            stopping point for a human decision, not an automatic retry path.
 
-# O que estas regras NAO cobrem, e por que.
+# What these rules do NOT cover, and why.
 #
-# Profundidade da fila, idade da mensagem mais antiga e profundidade da dead-letter queue
-# sao as tres series que diriam se o consumo esta acompanhando a producao. Nenhuma delas
-# vem da aplicacao: sao metricas do proprio SQS, publicadas no CloudWatch, e chegariam aqui
-# por um exporter. Enquanto ele nao existir, o sinal disponivel e indireto, o contador de
-# falhas acima, e um backlog crescente com consumo saudavel passaria despercebido.
+# Queue depth, age of the oldest message and dead-letter queue depth are the three series
+# that would say whether consumption is keeping up with production. None of them comes from
+# the application: they are SQS's own metrics, published to CloudWatch, and would arrive
+# here through an exporter. Until one exists, the available signal is indirect, the failure
+# counter above, and a growing backlog with healthy consumption would go unnoticed.
 #
-# Fica registrado como lacuna em vez de silenciado, porque para a via de criacao de contas
-# essa e a diferenca entre saber e nao saber que uma conta legitima se perdeu.
+# It is recorded as a gap rather than silenced, because for the account-creation path this
+# is the difference between knowing and not knowing that a legitimate account was lost.

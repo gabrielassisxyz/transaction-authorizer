@@ -9,8 +9,10 @@ COPY gradle ./gradle
 RUN ./gradlew --no-daemon dependencies >/dev/null 2>&1 || true
 COPY src ./src
 RUN ./gradlew --no-daemon --console=plain bootJar
-# The plain jar ends in -plain.jar, so this glob picks only the executable boot jar.
-RUN cp build/libs/*-SNAPSHOT.jar application.jar \
+# The build leaves two jars behind, the executable boot jar and a -plain.jar. Selecting by
+# what the other one is named keeps the version out of the build: matching on a version
+# fragment breaks the image the day the project stops being a snapshot.
+RUN cp "$(ls build/libs/*.jar | grep -v -- '-plain\.jar$')" application.jar \
     && java -Djarmode=tools -jar application.jar extract --layers --destination extracted
 
 # Runtime stage: a slim JRE, no build toolchain. JVM defaults are container-aware on 21, so
