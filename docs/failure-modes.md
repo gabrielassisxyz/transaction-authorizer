@@ -15,7 +15,7 @@ A fila fica inalcançável (rede, credencial, indisponibilidade do serviço).
   mensagem é perdida: nada foi recebido para perder.
 - **Via HTTP:** intacta. A autorização não toca a fila, então crédito e débito seguem
   atendendo enquanto o consumo espera.
-- **Sinal:** o componente de health do SQS fica vermelho e o gauge `sqs.connectivity` cai
+- **Sinal:** o componente de health do SQS fica vermelho e o gauge `sqs_connectivity` cai
   para zero. Esse componente fica de fora da readiness de propósito: uma fila fora do ar
   precisa alertar sem tirar o autorizador do balanceador, já que a via HTTP continua sã.
 
@@ -63,9 +63,9 @@ para a dead-letter queue.
   mensagem tem que alcançar a dead-letter queue em vez de morrer silenciosamente no
   consumer. Uma falha transitória repetida também pode esgotar o orçamento e cair lá.
 - **Evidência:** cada descarte registra `messageId` e o `ApproximateReceiveCount` no log,
-  e o contador `sqs.messages{outcome=poison}` sobe. A dead-letter queue tem retenção de 14
-  dias, mais longa que os 4 dias da fila principal, porque quem investiga precisa de um
-  tempo que a origem já gastou.
+  e o contador `sqs_messages_total{outcome="poison"}` sobe. A dead-letter queue tem retenção
+  de 14 dias, mais longa que os 4 dias da fila principal, porque quem investiga precisa de
+  um tempo que a origem já gastou.
 - **Resposta operacional:** inspecionar a mensagem, corrigir a causa (um produtor que
   emite corpo inválido, um esquema que mudou) e redirigir da dead-letter queue para a
   principal. Nenhuma correção acontece automaticamente: a dead-letter queue é um ponto de
@@ -81,7 +81,7 @@ redrive ou por reentrega da própria fila.
 - **Autorização:** o id da transação é reservado numa tabela de claims antes de qualquer
   mutação de saldo, então um replay encontra a decisão gravada e a devolve sem mover o
   saldo de novo. Um id reusado com um payload diferente mantém a primeira decisão e
-  incrementa `transactions.duplicate.payload`, porque isso é sinal de defeito no cliente,
+  incrementa `transactions_duplicate_payload_total`, porque isso é sinal de defeito no cliente,
   não uma retentativa legítima.
 
 ## Morte do poller no meio de uma mensagem

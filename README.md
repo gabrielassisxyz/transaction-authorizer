@@ -4,6 +4,9 @@ API de autorização de transações financeiras: consome eventos de abertura de
 uma fila AWS SQS e autoriza operações de crédito e débito sobre o saldo, com a
 invariante de que um débito nunca deixa o saldo negativo.
 
+Kotlin sobre Java 21, Spring Boot com MVC e virtual threads, PostgreSQL acessado por
+`JdbcClient` sem ORM, e o SDK v2 da AWS para o consumo da fila.
+
 ## Arquitetura
 
 Arquitetura hexagonal num único módulo Gradle. O núcleo (`domain`, `application`) não
@@ -25,7 +28,9 @@ flowchart LR
     web --> app
     consumer --> app
     app --> port[application/port]
+    breaker[adapter/outbound/resilience] -. implementa .-> port
     persistence[adapter/outbound/persistence] -. implementa .-> port
+    breaker --> persistence
     persistence --> pg[(Postgres)]
 ```
 
@@ -33,7 +38,12 @@ A seta cheia é dependência de compilação, sempre apontando para o núcleo; o
 persistência implementa uma porta declarada na `application`, então a `application` depende
 da abstração, não do JDBC. A invariante de saldo nunca-negativo não vive em Kotlin: mora
 num update condicional atômico no adaptador de persistência, onde dois débitos concorrentes
-não conseguem ambos passar. Decisões e trade-offs em `docs/adr/`.
+não conseguem ambos passar.
+
+A mesma costura é o que deixa a resiliência fora do núcleo: o circuit breaker é um segundo
+implementador da porta de transações, que embrulha o adaptador de persistência e responde
+por ele quando o banco não está alcançável (ADR-008). A `application` continua injetando a
+porta e não sabe que existe um breaker. Decisões e trade-offs em `docs/adr/`.
 
 ## Execução
 
@@ -66,10 +76,47 @@ para *semear*, não porque a aplicação precise deles. Detalhes em `docs/failur
 Se as portas padrão (5432, 4566, 8080) já estiverem em uso, `POSTGRES_PORT`,
 `LOCALSTACK_PORT` e `APP_PORT` remapeiam o lado host do compose. Toda a configuração tem
 padrão para execução local e é sobrescrevível por variável de ambiente: `DB_URL`,
-`DB_USERNAME`, `DB_PASSWORD`, `DB_POOL_SIZE`, `SQS_ENDPOINT`, `SQS_QUEUE_NAME`,
-`SQS_POLLERS`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` e
-`SERVER_PORT`. Em ambiente real, `SQS_ENDPOINT` fica vazio (o SDK resolve o endpoint da
-região) e as chaves também, e aí a credencial vem da role da instância.
+`DB_USERNAME`, `DB_PASSWORD`, `DB_POOL_SIZE`, `DB_CONNECTION_TIMEOUT_MS`, `SQS_ENDPOINT`,
+`SQS_QUEUE_NAME`, `SQS_POLLERS`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
+e `SERVER_PORT`. Em ambiente real, `SQS_ENDPOINT` fica vazio (o SDK resolve o endpoint da
+região) e as chaves também, e aí a credencial vem da role da instância. `APP_BIND` publica
+a porta da aplicação além do loopback, que é o que permite alcançá-la de outra máquina.
+
+## Autorização de transações
+
+`POST /transactions/{transactionId}` autoriza um crédito ou débito contra o saldo. O
+`transactionId` é gerado pelo cliente e é idempotente: reenviar o mesmo id devolve a
+decisão original sem mover o saldo de novo.
+
+```bash
+curl -X POST "http://localhost:8080/transactions/$(uuidgen)" \
+  -H 'Content-Type: application/json' \
+  -d '{"account_id":"<uuid da conta>","type":"DEBIT","amount":{"value":10.50,"currency":"BRL"}}'
+```
+
+Aprovação e recusa retornam ambas 200, diferindo no campo `transaction.status`
+(`SUCCEEDED` ou `FAILED`): uma recusa por fundo insuficiente é uma decisão de negócio, não
+um erro. Requisição malformada é 400, conta inexistente é 404, e moeda diferente de BRL
+ou valor fora da faixa é 422, todos como `application/problem+json`. Quando o
+armazenamento está indisponível a resposta é 503 com `Retry-After`, e não uma recusa: o
+serviço não decidiu, e dizer isso é diferente de dizer não (ADR-008). Contrato completo em
+`docs/openapi.yaml`.
+
+Para exercer cada um desses comportamentos sem montar requisição à mão, `docs/http/` traz
+a coleção de primeiro contato em dois formatos, um `.http` nativo de IDE e uma coleção
+Postman, com a nota de como obter um `account_id` semeado.
+
+## Observabilidade
+
+- Logs estruturados em JSON no stdout, com `transactionId` na via HTTP e `messageId` na
+  via de consumo para correlação.
+- Métricas Prometheus em `/actuator/prometheus`: `authorizations_total` com desfecho e
+  motivo, `sqs_messages_total` com desfecho, `authorizations_circuit_open`, os gauges
+  `hikaricp_connections_*` da saturação do pool e o histograma
+  `http_server_requests_seconds_bucket`, de onde sai o p99 que o gate de rollout lê
+  (`docs/deploy.md`).
+- Health em grupos: `/actuator/health/liveness` sem dependência,
+  `/actuator/health/readiness` seguindo o banco, e o SQS como componente à parte.
 
 ## Loop de desenvolvimento
 
@@ -96,42 +143,9 @@ Os dois fluxos semeiam a mesma base: rodar um depois do outro sem um `docker com
 down -v` entre eles refaz o seed sobre um banco já semeado, dobrando as contas. `bin/e2e`
 e `bin/chaos` já cuidam disso e derrubam os volumes antes de subir.
 
-O exemplo de `curl` mais abaixo usa `uuidgen` (pacote `util-linux` na maioria das
+O exemplo de `curl` acima usa `uuidgen` (pacote `util-linux` na maioria das
 distros). `bin/ci` só roda a varredura de segredos localmente se o `gitleaks` estiver
 instalado (`bin/install-hooks` cuida disso); sem ele esse gate específico existe só no CI.
-
-## Observabilidade
-
-- Logs estruturados em JSON no stdout, com `transactionId` na via HTTP e `messageId` na
-  via de consumo para correlação.
-- Métricas Prometheus em `/actuator/prometheus`, incluindo `authorizations`,
-  `sqs_messages` e a saturação do pool HikariCP.
-- Health em grupos: `/actuator/health/liveness` sem dependência,
-  `/actuator/health/readiness` seguindo o banco, e o SQS como componente à parte.
-
-## Autorização de transações
-
-`POST /transactions/{transactionId}` autoriza um crédito ou débito contra o saldo. O
-`transactionId` é gerado pelo cliente e é idempotente: reenviar o mesmo id devolve a
-decisão original sem mover o saldo de novo.
-
-```bash
-curl -X POST "http://localhost:8080/transactions/$(uuidgen)" \
-  -H 'Content-Type: application/json' \
-  -d '{"account_id":"<uuid da conta>","type":"DEBIT","amount":{"value":10.50,"currency":"BRL"}}'
-```
-
-Aprovação e recusa retornam ambas 200, diferindo no campo `transaction.status`
-(`SUCCEEDED` ou `FAILED`): uma recusa por fundo insuficiente é uma decisão de negócio, não
-um erro. Requisição malformada é 400, conta inexistente é 404, e moeda diferente de BRL
-ou valor fora da faixa é 422, todos como `application/problem+json`. Quando o
-armazenamento está indisponível a resposta é 503 com `Retry-After`, e não uma recusa: o
-serviço não decidiu, e dizer isso é diferente de dizer não (ADR-008). Contrato completo em
-`docs/openapi.yaml`.
-
-Para exercer cada um desses comportamentos sem montar requisição à mão, `docs/http/` traz
-a coleção de primeiro contato em dois formatos, um `.http` nativo de IDE e uma coleção
-Postman, com a nota de como obter um `account_id` semeado.
 
 ## Verificação
 
